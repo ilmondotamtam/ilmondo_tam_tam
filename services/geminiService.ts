@@ -1,7 +1,13 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Attenzione: API_KEY non configurata. Le funzioni AI non funzioneranno.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey || '' });
+};
 
 export const summarizeArticle = async (content: string): Promise<string> => {
   const ai = getAI();
@@ -13,7 +19,7 @@ export const summarizeArticle = async (content: string): Promise<string> => {
     return response.text?.trim() || "Nessun riassunto disponibile.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Errore nella generazione del riassunto.";
+    return "Riassunto non disponibile momentaneamente.";
   }
 };
 
@@ -27,6 +33,6 @@ export const suggestHeadline = async (content: string): Promise<string> => {
     return response.text?.trim() || "Titolo non disponibile.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Titolo Generico";
+    return "Nuova Notizia";
   }
 };
