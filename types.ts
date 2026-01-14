@@ -29,10 +29,10 @@ export interface Article {
   content: string;
   authorId: string;
   authorName: string;
-  category: string;
+  category: Category;
   imageUrl: string;
   timestamp: number;
   comments: Comment[];
 }
 
-export type Category = 'Politica' | 'Economia' | 'Tecnologia' | 'Cultura' | 'Sport' | 'Cronaca';
+export type Category = 'Opinioni' | 'Tradizioni' | 'Eventi' | 'Fatti';
