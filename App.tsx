@@ -131,7 +131,7 @@ const App: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 relative">
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-10">
             <h1 className="text-5xl md:text-8xl font-bold newspaper-font tracking-tighter text-stone-900 uppercase text-center">
-              Il Mondo Tam Tam
+              TESTATA
             </h1>
           </div>
           
@@ -142,7 +142,7 @@ const App: React.FC = () => {
               minHeight: '140px'
             }}
             role="img"
-            aria-label="Il Mondo Tam Tam - Logo"
+            aria-label="TESTATA - Logo"
           ></div>
         </div>
       </header>
