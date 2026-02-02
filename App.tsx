@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User, Article, UserRole, Category, Comment } from './types';
 import { INITIAL_ARTICLES, CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
@@ -12,17 +12,29 @@ const App: React.FC = () => {
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
+  const [isHeaderModalOpen, setIsHeaderModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
 
+  const [headerImage, setHeaderImage] = useState<string>('/immagini/testata.jpg');
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newCat, setNewCat] = useState<Category>('Fatti');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Carica l'immagine salvata al boot
+  useEffect(() => {
+    const savedHeader = localStorage.getItem('custom_header_image');
+    if (savedHeader) {
+      setHeaderImage(savedHeader);
+    }
+  }, []);
 
   const handleLogin = (role: UserRole) => {
     const mockUser: User = {
       id: Math.random().toString(36).substr(2, 9),
-      username: role === UserRole.READER ? 'LettoreCurioso' : 'RedattoreCapo',
+      username: role === UserRole.READER ? 'LettoreCurioso' : role === UserRole.AUTHOR ? 'Redattore' : 'Amministratore',
       email: 'user@example.com',
       role,
       avatar: `https://picsum.photos/seed/${role}/40/40`
@@ -86,39 +98,52 @@ const App: React.FC = () => {
     setNewContent('');
   };
 
+  const handleHeaderUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setHeaderImage(base64String);
+        localStorage.setItem('custom_header_image', base64String);
+        alert("Immagine salvata con successo nella memoria locale della testata!");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const resetHeader = () => {
+    const defaultPath = '/immagini/testata.jpg';
+    setHeaderImage(defaultPath);
+    localStorage.removeItem('custom_header_image');
+  };
+
   const filteredArticles = selectedCategory === 'All' 
     ? articles 
     : articles.filter(a => a.category === selectedCategory);
 
-  const showHeader = user && (user.role === UserRole.ADMIN || user.role === UserRole.AUTHOR);
+  const canManageHeader = user && user.role === UserRole.ADMIN;
+  const canWriteArticles = user && (user.role === UserRole.ADMIN || user.role === UserRole.AUTHOR);
 
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b-4 border-stone-800 w-full py-8 md:py-12 relative overflow-hidden">
         <div className="max-w-6xl mx-auto px-4 relative">
-          {/* Testo di fallback visibile se l'immagine non carica o per dare profondità */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-10">
             <h1 className="text-5xl md:text-8xl font-bold newspaper-font tracking-tighter text-stone-900 uppercase text-center">
               Il Mondo Tam Tam
             </h1>
           </div>
           
-          {/* Contenitore Testata aggiornato con il percorso richiesto */}
           <div 
-            className="relative z-10 w-full aspect-[4/1] bg-contain bg-center bg-no-repeat mx-auto"
+            className="relative z-10 w-full aspect-[4/1] bg-contain bg-center bg-no-repeat mx-auto transition-all duration-500"
             style={{ 
-              backgroundImage: "url('/immagini/testata.jpg')",
+              backgroundImage: `url('${headerImage}')`,
               minHeight: '140px'
             }}
             role="img"
             aria-label="Il Mondo Tam Tam - Logo"
           ></div>
-          
-          <div className="text-center mt-4">
-             <p className="text-xs md:text-sm font-bold uppercase tracking-[0.5em] text-stone-600">
-              Edizione Globale 2026
-            </p>
-          </div>
         </div>
       </header>
 
@@ -127,7 +152,7 @@ const App: React.FC = () => {
           <div className="flex space-x-6 text-sm font-bold uppercase tracking-widest">
             <button 
               onClick={() => setSelectedCategory('All')}
-              className={`hover:text-red-700 ${selectedCategory === 'All' ? 'text-red-700' : ''}`}
+              className={`hover:text-red-700 transition-colors ${selectedCategory === 'All' ? 'text-red-700' : ''}`}
             >
               Home
             </button>
@@ -135,13 +160,21 @@ const App: React.FC = () => {
               <button 
                 key={cat} 
                 onClick={() => setSelectedCategory(cat)}
-                className={`hover:text-red-700 ${selectedCategory === cat ? 'text-red-700' : ''}`}
+                className={`hover:text-red-700 transition-colors ${selectedCategory === cat ? 'text-red-700' : ''}`}
               >
                 {cat}
               </button>
             ))}
           </div>
           <div className="flex items-center space-x-4">
+            {canManageHeader && (
+              <button 
+                onClick={() => setIsHeaderModalOpen(true)}
+                className="text-stone-500 hover:text-stone-900 text-xs font-bold uppercase flex items-center gap-1 border border-stone-200 px-2 py-1 rounded"
+              >
+                ⚙️ Testata
+              </button>
+            )}
             {user ? (
               <div className="flex items-center space-x-3">
                 <span className="text-xs font-semibold">{user.username}</span>
@@ -151,7 +184,7 @@ const App: React.FC = () => {
             ) : (
               <button 
                 onClick={() => setIsAuthModalOpen(true)}
-                className="bg-stone-800 text-white px-4 py-1 text-xs font-bold uppercase hover:bg-stone-700"
+                className="bg-stone-800 text-white px-4 py-1 text-xs font-bold uppercase hover:bg-stone-700 transition-colors"
               >
                 Accedi
               </button>
@@ -185,11 +218,11 @@ const App: React.FC = () => {
         </aside>
 
         <div className="lg:col-span-6 order-1 lg:order-2">
-          {showHeader && (
+          {canWriteArticles && (
             <div className="flex justify-end items-center mb-6 border-b pb-2">
               <button 
                 onClick={() => setIsNewArticleModalOpen(true)}
-                className="bg-red-700 text-white px-3 py-1 text-sm font-bold uppercase flex items-center gap-2 hover:bg-red-800"
+                className="bg-red-700 text-white px-3 py-1 text-sm font-bold uppercase flex items-center gap-2 hover:bg-red-800 transition-colors"
               >
                 + Scrivi Articolo
               </button>
@@ -249,6 +282,7 @@ const App: React.FC = () => {
         </div>
       </footer>
 
+      {/* MODAL ARTICOLO */}
       {selectedArticle && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-75 flex justify-center items-start overflow-y-auto p-4 py-8">
           <div className="bg-white max-w-4xl w-full p-6 md:p-12 relative shadow-2xl animate-in fade-in zoom-in duration-300">
@@ -272,6 +306,57 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* MODAL GESTIONE TESTATA (ADMIN ONLY) */}
+      {isHeaderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-80 flex justify-center items-center p-4">
+          <div className="bg-white max-w-xl w-full p-8 relative shadow-2xl border-4 border-stone-800">
+            <button onClick={() => setIsHeaderModalOpen(false)} className="absolute top-4 right-4 text-2xl">✕</button>
+            <h2 className="text-2xl font-bold newspaper-font mb-6 border-b-2 border-stone-800 pb-2 uppercase">Gestione Testata Giornalistica</h2>
+            
+            <div className="space-y-6">
+              <div className="bg-stone-50 p-4 border border-dashed border-stone-300 text-center">
+                <p className="text-xs font-bold uppercase text-stone-500 mb-4">Anteprima Attuale</p>
+                <div 
+                  className="w-full aspect-[4/1] bg-contain bg-center bg-no-repeat mb-4 bg-white shadow-inner"
+                  style={{ backgroundImage: `url('${headerImage}')` }}
+                ></div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="block text-sm font-bold uppercase text-stone-700 mb-2">Carica nuova immagine (JPG/PNG)</span>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    accept="image/*"
+                    onChange={handleHeaderUpload}
+                    className="hidden" 
+                  />
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full bg-stone-800 text-white py-3 font-bold uppercase text-sm hover:bg-stone-700 transition-colors"
+                  >
+                    Sfoglia Documenti
+                  </button>
+                </label>
+                
+                <button 
+                  onClick={resetHeader}
+                  className="w-full border-2 border-stone-800 py-3 font-bold uppercase text-sm hover:bg-stone-100 transition-colors"
+                >
+                  Ripristina Default
+                </button>
+              </div>
+
+              <p className="text-[10px] text-stone-400 italic">
+                Nota: Le modifiche verranno salvate permanentemente nella memoria del browser (Local Storage) per questa postazione.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Altri Modal Invariati */}
       {isAuthModalOpen && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex justify-center items-center p-4">
           <div className="bg-white p-8 max-w-sm w-full border-t-8 border-blue-800 shadow-2xl">
