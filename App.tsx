@@ -94,21 +94,31 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-white border-b-4 border-stone-800 flex justify-center items-center w-full py-4 shadow-sm">
-        <div className="w-full max-w-6xl px-4">
-          <img 
-            src="immagini/testata.jpg" 
-            alt="Il Mondo Tam Tam - Mondo 2026" 
-            className="w-full h-auto block mx-auto max-h-[300px] object-contain"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              // Se l'immagine non è nella cartella immagini/, prova a cercarla nella root
-              if (target.src.includes('immagini/')) {
-                console.log("Immagine non trovata in 'immagini/', provo nella root...");
-                target.src = 'testata.jpg';
-              }
+      <header className="bg-white border-b-4 border-stone-800 w-full py-8 md:py-12 relative overflow-hidden">
+        <div className="max-w-6xl mx-auto px-4 relative">
+          {/* Testo di fallback visibile se l'immagine non carica o per dare profondità */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-10">
+            <h1 className="text-5xl md:text-8xl font-bold newspaper-font tracking-tighter text-stone-900 uppercase text-center">
+              Il Mondo Tam Tam
+            </h1>
+          </div>
+          
+          {/* Contenitore Testata aggiornato con il percorso richiesto */}
+          <div 
+            className="relative z-10 w-full aspect-[4/1] bg-contain bg-center bg-no-repeat mx-auto"
+            style={{ 
+              backgroundImage: "url('/immagini/testata.jpg')",
+              minHeight: '140px'
             }}
-          />
+            role="img"
+            aria-label="Il Mondo Tam Tam - Logo"
+          ></div>
+          
+          <div className="text-center mt-4">
+             <p className="text-xs md:text-sm font-bold uppercase tracking-[0.5em] text-stone-600">
+              Edizione Globale 2026
+            </p>
+          </div>
         </div>
       </header>
 
