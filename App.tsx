@@ -1,62 +1,10 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Article, UserRole, Category, Comment } from './types';
 import { INITIAL_ARTICLES, CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
 import { summarizeArticle, suggestHeadline } from './services/geminiService';
-
-const Logo = () => (
-  <div className="flex justify-center mb-4">
-    <svg width="117" height="117" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-2xl">
-      <defs>
-        <radialGradient id="earthGradient" cx="40%" cy="40%" r="60%">
-          <stop offset="0%" stopColor="#3B82F6" />
-          <stop offset="70%" stopColor="#1D4ED8" />
-          <stop offset="100%" stopColor="#1E3A8A" />
-        </radialGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-        <linearGradient id="woodGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#451A03" />
-          <stop offset="50%" stopColor="#78350F" />
-          <stop offset="100%" stopColor="#451A03" />
-        </linearGradient>
-        <radialGradient id="skinGradient" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#FEF3C7" />
-          <stop offset="80%" stopColor="#FDE68A" />
-          <stop offset="100%" stopColor="#D97706" />
-        </radialGradient>
-      </defs>
-      <g filter="url(#glow)">
-        <circle cx="100" cy="70" r="60" fill="url(#earthGradient)" />
-        <path d="M70 45C75 42 85 40 90 45C100 55 110 50 120 55C130 65 140 85 130 100C110 110 90 105 75 90C60 75 65 55 70 45Z" fill="#22C55E" fillOpacity="0.7" />
-        <path d="M110 35C115 32 125 35 130 40C135 50 145 60 140 70C130 75 120 70 115 65C110 55 105 40 110 35Z" fill="#16A34A" fillOpacity="0.6" />
-        <path d="M60 80C65 85 75 95 85 98C75 105 65 110 55 105C50 95 55 85 60 80Z" fill="#15803D" fillOpacity="0.5" />
-        <path d="M60 60Q80 50 110 65T150 60" stroke="white" strokeWidth="4" strokeOpacity="0.2" strokeLinecap="round" />
-        <path d="M70 85Q100 95 130 80" stroke="white" strokeWidth="3" strokeOpacity="0.15" strokeLinecap="round" />
-      </g>
-      <g transform="translate(0, 10)">
-        <path d="M55 110C55 110 45 170 65 195C85 215 115 215 135 195C155 170 145 110 145 110" fill="url(#woodGradient)" stroke="#271301" strokeWidth="1" />
-        <path d="M100 125V210" stroke="black" strokeWidth="15" strokeOpacity="0.2" />
-        <ellipse cx="100" cy="110" rx="48" ry="16" fill="url(#skinGradient)" stroke="#451A03" strokeWidth="1.5" />
-        <g stroke="#FDE68A" strokeWidth="1" strokeOpacity="0.6">
-          <path d="M58 118L68 200" />
-          <path d="M75 124L82 208" />
-          <path d="M100 126L100 212" />
-          <path d="M125 124L118 208" />
-          <path d="M142 118L132 200" />
-        </g>
-        <path d="M60 150Q100 160 140 150" stroke="#FDE68A" strokeWidth="1" strokeOpacity="0.4" fill="none" />
-        <path d="M65 175Q100 185 135 175" stroke="#FDE68A" strokeWidth="1" strokeOpacity="0.4" fill="none" />
-      </g>
-    </svg>
-  </div>
-);
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -146,12 +94,22 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-white border-b-4 border-stone-800 py-10 px-4 text-center">
-        <Logo />
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tighter newspaper-font mb-2 uppercase text-blue-800">
-          IL MONDO TAM TAM
-        </h1>
-        <p className="text-sm italic text-stone-500 font-serif">L'opinione che batte nel cuore del pianeta</p>
+      <header className="bg-white border-b-4 border-stone-800 flex justify-center items-center w-full py-4 shadow-sm">
+        <div className="w-full max-w-6xl px-4">
+          <img 
+            src="immagini/testata.jpg" 
+            alt="Il Mondo Tam Tam - Mondo 2026" 
+            className="w-full h-auto block mx-auto max-h-[300px] object-contain"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              // Se l'immagine non è nella cartella immagini/, prova a cercarla nella root
+              if (target.src.includes('immagini/')) {
+                console.log("Immagine non trovata in 'immagini/', provo nella root...");
+                target.src = 'testata.jpg';
+              }
+            }}
+          />
+        </div>
       </header>
 
       <nav className="bg-white sticky top-0 z-30 border-b shadow-sm overflow-x-auto whitespace-nowrap">

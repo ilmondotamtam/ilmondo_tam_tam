@@ -1,4 +1,3 @@
-
 import { Article, Category } from './types';
 
 export const CATEGORIES: Category[] = [
