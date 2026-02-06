@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS articles (
     author_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     category TEXT NOT NULL,
     image_url TEXT,
+    likes INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 

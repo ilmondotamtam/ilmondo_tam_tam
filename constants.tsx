@@ -2,7 +2,13 @@
 import { Article, Category } from './types';
 
 export const CATEGORIES: Category[] = [
-  'Opinioni', 'Tradizioni', 'Eventi', 'Fatti'
+  'Opinioni', 
+  'Fatti', 
+  'Tradizioni e eventi', 
+  'Curiosità', 
+  'Città', 
+  'Foto e video', 
+  'Oggi parliamo di...'
 ];
 
 export const INITIAL_ARTICLES: Article[] = [
@@ -34,7 +40,7 @@ export const INITIAL_ARTICLES: Article[] = [
     content: 'Le tradizioni popolari non sono solo folklore, ma il battito vitale di comunità che resistono all\'omologazione globale...',
     authorId: 'auth2',
     authorName: 'Giulia Bianchi',
-    category: 'Tradizioni',
+    category: 'Tradizioni e eventi',
     imageUrl: 'https://picsum.photos/800/450?random=2',
     timestamp: Date.now() - 172800000,
     comments: []
@@ -46,7 +52,7 @@ export const INITIAL_ARTICLES: Article[] = [
     content: 'Tutto pronto per l\'evento dell\'anno che vedrà protagonisti i migliori registi indipendenti...',
     authorId: 'auth1',
     authorName: 'Mario Rossi',
-    category: 'Eventi',
+    category: 'Tradizioni e eventi',
     imageUrl: 'https://picsum.photos/800/450?random=3',
     timestamp: Date.now() - 50000000,
     comments: []

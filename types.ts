@@ -33,6 +33,14 @@ export interface Article {
   imageUrl: string;
   timestamp: number;
   comments: Comment[];
+  likes?: number; // Nuovo campo per funzionalità social
 }
 
-export type Category = 'Opinioni' | 'Tradizioni' | 'Eventi' | 'Fatti';
+export type Category = 
+  | 'Opinioni' 
+  | 'Fatti' 
+  | 'Tradizioni e eventi' 
+  | 'Curiosità' 
+  | 'Città' 
+  | 'Foto e video' 
+  | 'Oggi parliamo di...';
