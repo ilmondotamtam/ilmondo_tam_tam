@@ -219,14 +219,13 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 font-sans">
-      {/* Header Newspaper Style - Rimosso bordo doppio */}
+      {/* Header Newspaper Style */}
       <header className="bg-white py-2 px-4">
         <div className="max-w-7xl mx-auto flex flex-col items-center">
-          {/* Spazio vuoto sopra per estetica minimal o eventuale brand secondario */}
         </div>
       </header>
 
-      {/* Main Content - 3 COLUMNS */}
+      {/* Main Content - 3 COLUMNS RESPONSIVE ORDER */}
       <main className="flex-1 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-10">
         {isLoading ? (
           <div className="lg:col-span-12 py-32 text-center flex flex-col items-center">
@@ -235,10 +234,10 @@ const App: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* COLUMN 1: Testata & Vertical Nav */}
-            <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1 border-r border-stone-200 pr-6">
+            {/* COLUMN 1: Testata & Vertical Nav (MOBILE ORDER: 1) */}
+            <aside className="lg:col-span-3 space-y-6 order-1 lg:order-1 lg:border-r border-stone-200 lg:pr-6">
               
-              {/* Testata Image - Ingrandita del 10% */}
+              {/* Testata Image */}
               <div className="w-full">
                 {headerImage ? (
                   <div className="group relative">
@@ -266,7 +265,7 @@ const App: React.FC = () => {
                 )}
               </div>
 
-              {/* Nuova Posizione Data */}
+              {/* Data */}
               <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-8">
                 {new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
@@ -294,61 +293,11 @@ const App: React.FC = () => {
                   </button>
                 ))}
               </nav>
-
             </aside>
 
-            {/* COLUMN 2: Social Feed */}
-            <div className="lg:col-span-6 space-y-6 order-1 lg:order-2">
-              {/* Social Posting Box */}
-              {(user?.role === UserRole.ADMIN || user?.role === UserRole.AUTHOR) && (
-                <div className="bg-white border border-stone-200 p-4 rounded-xl shadow-sm mb-8">
-                  <div className="flex gap-4 items-center">
-                    <img src={user?.avatar} className="w-10 h-10 rounded-full grayscale border border-stone-100" alt="me" />
-                    <button 
-                      onClick={() => setIsNewArticleModalOpen(true)}
-                      className="flex-1 text-left bg-stone-50 hover:bg-stone-100 text-stone-400 p-3 rounded-full text-sm transition-colors border border-stone-100"
-                    >
-                      Cosa bolle in pentola, {user?.username.split('_')[0]}?
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-around mt-4 pt-3 border-t border-stone-50">
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                      Foto
-                    </button>
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 4.5z"/></svg>
-                      Opinione
-                    </button>
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                      Cronaca
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              <div className="space-y-4">
-                {filteredArticles.length > 0 ? (
-                  filteredArticles.map(article => (
-                    <ArticleCard 
-                      key={article.id} 
-                      article={article} 
-                      onClick={setSelectedArticle}
-                      onLike={(newLikes) => handleUpdateLike(article.id, newLikes)}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-stone-200">
-                    <p className="text-stone-400 italic">Ancora nessuna cronaca in questa sezione.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* COLUMN 3: Top Opinioni & Profile */}
-            <aside className="lg:col-span-3 space-y-8 order-3 border-l border-stone-200 pl-6">
-              {/* TOP OPINIONI SECTION */}
+            {/* COLUMN 3: Top Opinioni & Profile (MOBILE ORDER: 2) */}
+            <aside className="lg:col-span-3 space-y-8 order-2 lg:order-3 lg:border-l border-stone-200 lg:pl-6">
+              {/* TOP OPINIONI */}
               <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
                 <h3 className="text-lg font-bold uppercase border-b border-stone-800 mb-6 newspaper-font">Top Opinioni</h3>
                 <div className="space-y-4">
@@ -373,65 +322,56 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   ))}
-                  {topOpinions.length === 0 && (
-                    <p className="text-[10px] text-stone-400 text-center italic">Nessuna opinione pubblicata.</p>
-                  )}
                 </div>
               </section>
 
-              {/* Profile Section */}
+              {/* Profilo */}
               <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
                 <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font text-center">Profilo</h3>
-                
                 {user ? (
                   <div className="flex flex-col items-center text-center">
-                    <div className="relative mb-4">
-                      <img 
-                        src={user.avatar} 
-                        className="w-24 h-24 rounded-full border-4 border-stone-800 shadow-md grayscale" 
-                        alt="Avatar"
-                      />
-                      <span className="absolute -bottom-1 -right-1 bg-stone-900 text-white text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter">
-                        {user.role}
-                      </span>
-                    </div>
+                    <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-4 grayscale" alt="Avatar"/>
                     <h4 className="text-lg font-bold newspaper-font mb-1">{user.username}</h4>
                     <p className="text-[10px] uppercase font-black text-stone-400 mb-6 tracking-widest">{user.email}</p>
-                    
-                    <div className="w-full space-y-2 border-t border-stone-100 pt-6">
-                      <button 
-                        onClick={() => setUser(null)}
-                        className="w-full bg-stone-100 hover:bg-stone-200 text-stone-900 text-[10px] font-black py-2 uppercase tracking-widest transition-colors rounded"
-                      >
-                        Disconnetti
-                      </button>
-                    </div>
+                    <button onClick={() => setUser(null)} className="w-full bg-stone-100 hover:bg-stone-200 text-stone-900 text-[10px] font-black py-2 uppercase rounded">Disconnetti</button>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    <p className="text-xs italic font-serif text-stone-500 mb-6 text-center">
-                      Accedi per partecipare alla vita della redazione e lasciare i tuoi commenti.
-                    </p>
-                    <button 
-                      onClick={() => setIsAuthModalOpen(true)}
-                      className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase hover:bg-stone-700 shadow-md tracking-widest transition-all rounded"
-                    >
-                      Accedi
-                    </button>
-                  </div>
+                  <button onClick={() => setIsAuthModalOpen(true)} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded">Accedi</button>
                 )}
               </section>
-
-              <div className="p-6 bg-stone-900 text-white text-center rounded-xl shadow-inner">
-                <div className="mb-4 flex justify-center">
-                   <div className="w-10 h-10 rounded-full bg-stone-800 flex items-center justify-center">
-                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                   </div>
-                </div>
-                <h4 className="text-lg newspaper-font mb-2">Cloud Seguro</h4>
-                <p className="text-[10px] uppercase tracking-widest text-stone-400">Dati protetti da Supabase Enterprise</p>
-              </div>
             </aside>
+
+            {/* COLUMN 2: Social Feed (MOBILE ORDER: 3) */}
+            <div className="lg:col-span-6 space-y-6 order-3 lg:order-2">
+              {(user?.role === UserRole.ADMIN || user?.role === UserRole.AUTHOR) && (
+                <div className="bg-white border border-stone-200 p-4 rounded-xl shadow-sm mb-8">
+                  <div className="flex gap-4 items-center">
+                    <img src={user?.avatar} className="w-10 h-10 rounded-full grayscale border border-stone-100" alt="me" />
+                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex-1 text-left bg-stone-50 text-stone-400 p-3 rounded-full text-sm border border-stone-100">
+                      Cosa bolle in pentola, {user?.username.split('_')[0]}?
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                {filteredArticles.length > 0 ? (
+                  filteredArticles.map(article => (
+                    <ArticleCard 
+                      key={article.id} 
+                      article={article} 
+                      onClick={setSelectedArticle}
+                      onLike={(newLikes) => handleUpdateLike(article.id, newLikes)}
+                    />
+                  ))
+                ) : (
+                  <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-stone-200 text-stone-400 italic">
+                    Ancora nessuna cronaca in questa sezione.
+                  </div>
+                )}
+              </div>
+            </div>
+
           </>
         )}
       </main>
@@ -449,10 +389,7 @@ const App: React.FC = () => {
                   <img src={`https://api.dicebear.com/7.x/miniavs/svg?seed=${selectedArticle.authorName}`} className="w-6 h-6 rounded-full border border-stone-200" alt="auth" />
                   Di {selectedArticle.authorName}
                 </span>
-                <span className="flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  {new Date(selectedArticle.timestamp).toLocaleDateString()}
-                </span>
+                <span>{new Date(selectedArticle.timestamp).toLocaleDateString()}</span>
               </div>
             </div>
             <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale shadow-xl rounded-lg" />
@@ -469,13 +406,12 @@ const App: React.FC = () => {
       {/* MODAL CAMBIO TESTATA */}
       {isHeaderModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
-          <div className="bg-white p-10 max-w-xl w-full shadow-2xl border-4 border-stone-900 rounded-xl">
-            <h2 className="text-3xl font-bold newspaper-font mb-6 border-b-2 border-stone-800 pb-2 uppercase text-center">Gestione Testata</h2>
-            <p className="text-sm text-stone-500 mb-8 italic text-center">Carica una nuova immagine. Questa verrà salvata nel database Supabase e sarà visibile a tutti.</p>
-            <div className="space-y-6">
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleHeaderUpload} />
-              <button onClick={() => fileInputRef.current?.click()} className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-stone-700 transition-colors rounded-lg">Carica Immagine</button>
-              <button onClick={() => setIsHeaderModalOpen(false)} className="w-full border-2 border-stone-200 py-4 font-black uppercase tracking-widest text-xs hover:bg-stone-50 transition-colors rounded-lg">Chiudi</button>
+          <div className="bg-white p-10 max-w-xl w-full shadow-2xl border-4 border-stone-900 rounded-xl text-center">
+            <h2 className="text-3xl font-bold newspaper-font mb-6 border-b-2 border-stone-800 pb-2 uppercase">Gestione Testata</h2>
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleHeaderUpload} />
+            <div className="space-y-4">
+              <button onClick={() => fileInputRef.current?.click()} className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest rounded-lg">Carica Immagine</button>
+              <button onClick={() => setIsHeaderModalOpen(false)} className="w-full border-2 border-stone-200 py-4 font-black uppercase tracking-widest rounded-lg">Chiudi</button>
             </div>
           </div>
         </div>
@@ -496,46 +432,21 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL NUOVO ARTICOLO / POST */}
+      {/* MODAL NUOVO ARTICOLO */}
       {isNewArticleModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
           <div className="bg-white max-w-3xl w-full p-10 relative shadow-2xl border-x-8 border-stone-800 rounded-xl">
-            <button onClick={() => setIsNewArticleModalOpen(false)} className="absolute top-6 right-6 text-2xl hover:text-red-600 transition-colors">✕</button>
-            <h2 className="text-4xl font-bold newspaper-font mb-8 border-b-4 border-stone-800 pb-2 uppercase tracking-tighter">Crea un Post</h2>
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-stone-400 mb-2">Sezione</label>
-                  <select className="w-full p-3 border-2 border-stone-100 bg-stone-50 text-xs font-bold rounded-lg outline-none focus:border-stone-300" value={newCat} onChange={(e) => setNewCat(e.target.value as Category)}>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="flex flex-col justify-end">
-                  <button onClick={async () => {
-                    if(!newContent) return;
-                    setIsGeneratingAI(true);
-                    setNewTitle(await suggestHeadline(newContent));
-                    setIsGeneratingAI(false);
-                  }} className="text-[10px] bg-stone-100 p-3 font-bold uppercase hover:bg-stone-200 rounded-lg flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                    Suggerisci Titolo AI
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase text-stone-400 mb-2">Titolo Post</label>
-                <input type="text" placeholder="Scrivi un titolo accattivante..." className="w-full p-4 border-2 border-stone-100 text-2xl font-bold newspaper-font rounded-lg outline-none focus:border-stone-300" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase text-stone-400 mb-2">Cosa vuoi raccontare?</label>
-                <textarea placeholder="Inserisci il contenuto qui..." className="w-full p-4 border-2 border-stone-100 h-80 text-lg font-serif rounded-lg outline-none focus:border-stone-300" value={newContent} onChange={(e) => setNewContent(e.target.value)} />
-              </div>
+            <button onClick={() => setIsNewArticleModalOpen(false)} className="absolute top-6 right-6 text-2xl hover:text-red-600">✕</button>
+            <h2 className="text-4xl font-bold newspaper-font mb-8 border-b-4 border-stone-800 pb-2 uppercase">Crea un Post</h2>
+            <div className="space-y-6">
+              <input type="text" placeholder="Titolo Post..." className="w-full p-4 border-2 border-stone-100 text-2xl font-bold newspaper-font rounded-lg outline-none" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+              <textarea placeholder="Cosa vuoi raccontare?..." className="w-full p-4 border-2 border-stone-100 h-64 text-lg font-serif rounded-lg outline-none" value={newContent} onChange={(e) => setNewContent(e.target.value)} />
               <button 
                 onClick={handlePublish}
                 disabled={isGeneratingAI || !newTitle || !newContent}
-                className="w-full bg-stone-900 text-white py-5 font-black uppercase tracking-[0.2em] text-sm hover:bg-stone-700 disabled:opacity-50 transition-all rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                className="w-full bg-stone-900 text-white py-5 font-black uppercase tracking-widest text-sm hover:bg-stone-700 disabled:opacity-50 transition-all rounded-xl shadow-lg"
               >
-                {isGeneratingAI ? 'PUBBLICAZIONE IN CORSO...' : 'PUBBLICA ORA'}
+                {isGeneratingAI ? 'PUBBLICAZIONE...' : 'PUBBLICA ORA'}
               </button>
             </div>
           </div>
