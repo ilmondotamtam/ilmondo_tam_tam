@@ -215,50 +215,16 @@ const App: React.FC = () => {
       .slice(0, 5);
   }, [articles]);
 
+  const navStyles = { fontFamily: '"Arial Black", Arial, sans-serif', fontWeight: 900 };
+
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 font-sans">
-      {/* Header Newspaper Style */}
-      <header className="bg-white border-b-8 border-double border-stone-800 py-10 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col items-center">
-          <div className="w-full flex justify-end items-end border-b border-stone-200 pb-2 mb-6 text-[10px] uppercase font-bold tracking-widest text-stone-500">
-            <span>{new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          </div>
-          
-          <div className="relative w-full">
-            {headerImage && (
-              <div 
-                className="w-full aspect-[21/5] bg-cover bg-center border-y-2 border-stone-800 shadow-inner"
-                style={{ backgroundImage: `url(${headerImage})` }}
-              ></div>
-            )}
-            {!headerImage && (
-               <div className="w-full h-32 flex items-center justify-center bg-stone-100 border-2 border-dashed border-stone-300">
-                 <p className="text-stone-400 italic newspaper-font">Carica la testata dal menu Admin</p>
-               </div>
-            )}
-          </div>
+      {/* Header Newspaper Style - Rimosso bordo doppio */}
+      <header className="bg-white py-2 px-4">
+        <div className="max-w-7xl mx-auto flex flex-col items-center">
+          {/* Spazio vuoto sopra per estetica minimal o eventuale brand secondario */}
         </div>
       </header>
-
-      {/* Navigation */}
-      <nav className="bg-white sticky top-0 z-40 border-b-2 border-stone-800 shadow-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
-          <div 
-            className="flex space-x-8 text-[17px] uppercase tracking-tighter overflow-x-auto no-scrollbar" 
-            style={{ fontFamily: '"Arial Black", Arial, sans-serif', fontWeight: 900 }}
-          >
-            <button onClick={() => setSelectedCategory('All')} className={`whitespace-nowrap hover:text-red-600 ${selectedCategory === 'All' ? 'text-red-600 border-b-2 border-red-600' : ''}`}>Home</button>
-            {CATEGORIES.map(cat => (
-              <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap hover:text-red-600 ${selectedCategory === cat ? 'text-red-600 border-b-2 border-red-600' : ''}`}>{cat}</button>
-            ))}
-          </div>
-          <div className="flex items-center gap-6">
-            {user?.role === UserRole.ADMIN && (
-              <button onClick={() => setIsHeaderModalOpen(true)} className="text-[10px] font-bold border border-stone-300 px-2 py-1 rounded hover:bg-stone-50 transition-colors whitespace-nowrap">CAMBIA TESTATA</button>
-            )}
-          </div>
-        </div>
-      </nav>
 
       {/* Main Content - 3 COLUMNS */}
       <main className="flex-1 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-10">
@@ -269,8 +235,151 @@ const App: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* COLUMN 1: Profile & Auth */}
-            <aside className="lg:col-span-3 space-y-8 order-2 lg:order-1 border-r border-stone-200 pr-4">
+            {/* COLUMN 1: Testata & Vertical Nav */}
+            <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1 border-r border-stone-200 pr-6">
+              
+              {/* Testata Image - Ingrandita del 10% */}
+              <div className="w-full">
+                {headerImage ? (
+                  <div className="group relative">
+                    <img 
+                      src={headerImage} 
+                      alt="Testata" 
+                      className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm transform scale-110 origin-top transition-transform duration-300" 
+                    />
+                    {user?.role === UserRole.ADMIN && (
+                      <button 
+                        onClick={() => setIsHeaderModalOpen(true)} 
+                        className="absolute bottom-6 right-0 bg-white/90 text-[8px] font-black border border-stone-800 px-2 py-1 rounded hover:bg-stone-900 hover:text-white transition-all shadow-sm z-10"
+                      >
+                        MODIFICA
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-full h-32 flex flex-col items-center justify-center bg-stone-100 border-2 border-dashed border-stone-300 rounded-lg">
+                    <p className="text-stone-400 text-[10px] italic text-center px-4 mb-2">Immagine Testata Assente</p>
+                    {user?.role === UserRole.ADMIN && (
+                      <button onClick={() => setIsHeaderModalOpen(true)} className="text-[9px] font-bold bg-stone-800 text-white px-2 py-1 rounded">CARICA</button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Nuova Posizione Data */}
+              <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-8">
+                {new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </div>
+
+              {/* VERTICAL MENU */}
+              <nav className="flex flex-col space-y-1">
+                <h3 className="text-[10px] font-black uppercase text-stone-400 mb-4 tracking-widest border-b border-stone-200 pb-1">Sezioni Navigazione</h3>
+                
+                <button 
+                  onClick={() => setSelectedCategory('All')} 
+                  style={navStyles}
+                  className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}
+                >
+                  Home Page
+                </button>
+                
+                {CATEGORIES.map(cat => (
+                  <button 
+                    key={cat} 
+                    onClick={() => setSelectedCategory(cat)}
+                    style={navStyles}
+                    className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </nav>
+
+            </aside>
+
+            {/* COLUMN 2: Social Feed */}
+            <div className="lg:col-span-6 space-y-6 order-1 lg:order-2">
+              {/* Social Posting Box */}
+              {(user?.role === UserRole.ADMIN || user?.role === UserRole.AUTHOR) && (
+                <div className="bg-white border border-stone-200 p-4 rounded-xl shadow-sm mb-8">
+                  <div className="flex gap-4 items-center">
+                    <img src={user?.avatar} className="w-10 h-10 rounded-full grayscale border border-stone-100" alt="me" />
+                    <button 
+                      onClick={() => setIsNewArticleModalOpen(true)}
+                      className="flex-1 text-left bg-stone-50 hover:bg-stone-100 text-stone-400 p-3 rounded-full text-sm transition-colors border border-stone-100"
+                    >
+                      Cosa bolle in pentola, {user?.username.split('_')[0]}?
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-around mt-4 pt-3 border-t border-stone-50">
+                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      Foto
+                    </button>
+                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 4.5z"/></svg>
+                      Opinione
+                    </button>
+                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                      Cronaca
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                {filteredArticles.length > 0 ? (
+                  filteredArticles.map(article => (
+                    <ArticleCard 
+                      key={article.id} 
+                      article={article} 
+                      onClick={setSelectedArticle}
+                      onLike={(newLikes) => handleUpdateLike(article.id, newLikes)}
+                    />
+                  ))
+                ) : (
+                  <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-stone-200">
+                    <p className="text-stone-400 italic">Ancora nessuna cronaca in questa sezione.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* COLUMN 3: Top Opinioni & Profile */}
+            <aside className="lg:col-span-3 space-y-8 order-3 border-l border-stone-200 pl-6">
+              {/* TOP OPINIONI SECTION */}
+              <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                <h3 className="text-lg font-bold uppercase border-b border-stone-800 mb-6 newspaper-font">Top Opinioni</h3>
+                <div className="space-y-4">
+                  {topOpinions.map((op, idx) => (
+                    <div 
+                      key={op.id} 
+                      className="group cursor-pointer border-b border-stone-50 pb-3 last:border-0"
+                      onClick={() => setSelectedArticle(op)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl font-black text-stone-200 group-hover:text-stone-800 transition-colors">0{idx + 1}</span>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-bold leading-tight group-hover:text-red-600 transition-colors line-clamp-2">{op.title}</h4>
+                          <div className="flex items-center justify-between mt-2">
+                             <span className="text-[10px] text-stone-400 font-bold uppercase">Di {op.authorName}</span>
+                             <div className="flex items-center gap-1">
+                               <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                               <span className="text-[10px] font-bold text-stone-600">{op.likes}</span>
+                             </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {topOpinions.length === 0 && (
+                    <p className="text-[10px] text-stone-400 text-center italic">Nessuna opinione pubblicata.</p>
+                  )}
+                </div>
+              </section>
+
+              {/* Profile Section */}
               <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
                 <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font text-center">Profilo</h3>
                 
@@ -311,111 +420,6 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 )}
-              </section>
-
-              <div className="p-4 border-y border-stone-200 italic font-serif text-xs text-stone-600 leading-relaxed text-center">
-                "La stampa libera è la voce che impedisce al silenzio di diventare legge."
-              </div>
-            </aside>
-
-            {/* COLUMN 2: Social Feed */}
-            <div className="lg:col-span-6 space-y-6 order-1 lg:order-2">
-              {/* Social Posting Box */}
-              {(user?.role === UserRole.ADMIN || user?.role === UserRole.AUTHOR) && (
-                <div className="bg-white border border-stone-200 p-4 rounded-xl shadow-sm mb-8">
-                  <div className="flex gap-4 items-center">
-                    <img src={user?.avatar} className="w-10 h-10 rounded-full grayscale border border-stone-100" alt="me" />
-                    <button 
-                      onClick={() => setIsNewArticleModalOpen(true)}
-                      className="flex-1 text-left bg-stone-50 hover:bg-stone-100 text-stone-400 p-3 rounded-full text-sm transition-colors border border-stone-100"
-                    >
-                      Che c'è di nuovo, {user?.username.split('_')[0]}?
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-around mt-4 pt-3 border-t border-stone-50">
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                      Foto
-                    </button>
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 4.5z"/></svg>
-                      Opinione
-                    </button>
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex items-center gap-2 text-stone-600 hover:bg-stone-50 p-2 rounded-lg transition-colors text-xs font-bold uppercase tracking-tighter">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                      Cronaca
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              <div className="space-y-4">
-                {filteredArticles.length > 0 ? (
-                  filteredArticles.map(article => (
-                    <ArticleCard 
-                      key={article.id} 
-                      article={article} 
-                      onClick={setSelectedArticle}
-                      onLike={(newLikes) => handleUpdateLike(article.id, newLikes)}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-stone-200">
-                    <p className="text-stone-400 italic">Ancora nessuna cronaca in questa sezione.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* COLUMN 3: Top Opinioni & Activities */}
-            <aside className="lg:col-span-3 space-y-10 order-3 border-l border-stone-200 pl-4">
-              {/* TOP OPINIONI SECTION */}
-              <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
-                <h3 className="text-lg font-bold uppercase border-b border-stone-800 mb-6 newspaper-font">Top Opinioni</h3>
-                <div className="space-y-4">
-                  {topOpinions.map((op, idx) => (
-                    <div 
-                      key={op.id} 
-                      className="group cursor-pointer border-b border-stone-50 pb-3 last:border-0"
-                      onClick={() => setSelectedArticle(op)}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl font-black text-stone-200 group-hover:text-stone-800 transition-colors">0{idx + 1}</span>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold leading-tight group-hover:text-red-600 transition-colors line-clamp-2">{op.title}</h4>
-                          <div className="flex items-center justify-between mt-2">
-                             <span className="text-[10px] text-stone-400 font-bold uppercase">Di {op.authorName}</span>
-                             <div className="flex items-center gap-1">
-                               <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                               <span className="text-[10px] font-bold text-stone-600">{op.likes}</span>
-                             </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {topOpinions.length === 0 && (
-                    <p className="text-[10px] text-stone-400 text-center italic">Nessuna opinione pubblicata.</p>
-                  )}
-                </div>
-              </section>
-
-              <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
-                <h3 className="text-lg font-bold uppercase border-b border-stone-800 mb-6 newspaper-font">Attività Recenti</h3>
-                <div className="space-y-6">
-                  {articles.flatMap(a => a.comments).slice(0, 5).map(c => (
-                    <div key={c.id} className="text-xs group">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-stone-900">{c.username}</span>
-                        <span className="text-[10px] text-stone-400">• ha commentato</span>
-                      </div>
-                      <p className="italic text-stone-600 border-l-2 border-stone-200 pl-3 py-1 group-hover:border-stone-800 transition-colors">"{c.content}"</p>
-                    </div>
-                  ))}
-                  {articles.flatMap(a => a.comments).length === 0 && (
-                     <p className="text-[10px] text-stone-400 text-center italic">Nessun commento recente.</p>
-                  )}
-                </div>
               </section>
 
               <div className="p-6 bg-stone-900 text-white text-center rounded-xl shadow-inner">
@@ -480,7 +484,7 @@ const App: React.FC = () => {
       {/* MODAL AUTH */}
       {isAuthModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex justify-center items-center p-6 backdrop-blur-sm">
-          <div className="bg-white p-10 max-w-sm w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
+          <div className="bg-white p-10 max-sm w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
             <h2 className="text-3xl font-bold newspaper-font mb-8 text-center uppercase">Login Redazione</h2>
             <div className="space-y-4">
               <button onClick={() => handleLogin(UserRole.READER)} className="w-full border-2 border-stone-900 py-4 text-xs font-black uppercase hover:bg-stone-50 transition-colors rounded-lg">Entra come Lettore</button>
