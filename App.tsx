@@ -12,10 +12,21 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY'>('LOGIN');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
   const [isHeaderModalOpen, setIsHeaderModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Form State
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const [authError, setAuthError] = useState('');
 
   const [headerImage, setHeaderImage] = useState<string>('');
   const [newTitle, setNewTitle] = useState('');
@@ -26,13 +37,33 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    checkLocalSession();
     fetchData();
   }, []);
+
+  // Funzione per codificare la password (SHA-256)
+  const hashPassword = async (password: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  const checkLocalSession = () => {
+    const savedUser = localStorage.getItem('tam_tam_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('tam_tam_user');
+      }
+    }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // 1. Carica Articoli con commenti
       const { data: articlesData, error: articlesError } = await supabase
         .from('articles')
         .select('*, comments(*)')
@@ -45,7 +76,7 @@ const App: React.FC = () => {
         title: a.title,
         summary: a.summary,
         content: a.content,
-        authorId: a.author_id || 'guest',
+        authorId: a.author_id,
         authorName: a.author_name,
         category: a.category as Category,
         imageUrl: a.image_url,
@@ -54,7 +85,7 @@ const App: React.FC = () => {
         comments: (a.comments || []).map((c: any) => ({
           id: c.id,
           articleId: c.article_id,
-          userId: c.user_id || 'anonymous',
+          userId: c.user_id,
           username: c.username,
           content: c.content,
           timestamp: new Date(c.created_at).getTime()
@@ -62,7 +93,6 @@ const App: React.FC = () => {
       }));
       setArticles(formattedArticles);
 
-      // 2. Carica Immagine Testata dalla tabella 'testata'
       const { data: testataData } = await supabase
         .from('testata')
         .select('imma_testata')
@@ -79,35 +109,155 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogin = async (role: UserRole) => {
-    const mockId = `user_${role.toLowerCase()}_${Math.random().toString(36).substr(2, 5)}`;
-    const mockUser: User = {
-      id: mockId,
-      username: role === UserRole.READER ? 'Lettore_Eco' : role === UserRole.AUTHOR ? 'Redattore_Capo' : 'Admin_TamTam',
-      email: `${role.toLowerCase()}@tamtam.it`,
-      role,
-      avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${role}`
-    };
+  const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+  const handleResendCode = async () => {
+    if (!pendingUserId) return;
+    setAuthError('');
+    setIsGeneratingAI(true);
+    try {
+      const newCode = generateCode();
+      const { error } = await supabase
+        .from('utenti')
+        .update({ verification_code: newCode })
+        .eq('id', pendingUserId);
+      
+      if (error) throw error;
+      
+      console.log(`[SIMULAZIONE MAIL] Nuovo codice: ${newCode}`);
+      alert(`Simulazione: Nuovo codice inviato: ${newCode}`);
+    } catch (err: any) {
+      setAuthError("Errore nel rinvio del codice.");
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsGeneratingAI(true);
 
     try {
-      await supabase.from('users').upsert({
-        id: mockUser.id,
-        username: mockUser.username,
-        email: mockUser.email,
-        role: mockUser.role,
-        avatar: mockUser.avatar,
-        last_login: new Date().toISOString()
-      });
-      setUser(mockUser);
-      setIsAuthModalOpen(false);
-    } catch (e) {
-      console.error("Errore salvataggio utente:", e);
+      if (authMode === 'REGISTER') {
+        const username = `${firstName}_${lastName}`.toLowerCase().replace(/\s/g, '');
+        const code = generateCode();
+        const hashedPassword = await hashPassword(authPassword);
+
+        const { data: existing } = await supabase
+          .from('utenti')
+          .select('id')
+          .or(`email.eq.${authEmail},username.eq.${username}`)
+          .maybeSingle();
+
+        if (existing) throw new Error("Email o Nome/Cognome già registrati.");
+
+        const { data: newUser, error: registerError } = await supabase
+          .from('utenti')
+          .insert({
+            username,
+            first_name: firstName,
+            last_name: lastName,
+            birth_date: birthDate,
+            email: authEmail,
+            password: hashedPassword, // Password codificata
+            role: 'READER',
+            is_verified: false,
+            verification_code: code,
+            avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${username}`
+          })
+          .select()
+          .single();
+
+        if (registerError) throw registerError;
+
+        console.log(`[SIMULAZIONE MAIL] Codice per ${authEmail}: ${code}`);
+        alert(`Simulazione: Codice inviato alla mail ${authEmail}: ${code}`);
+        
+        setPendingUserId(newUser.id);
+        setAuthMode('VERIFY');
+      } else if (authMode === 'LOGIN') {
+        const hashedPassword = await hashPassword(authPassword);
+        
+        const { data: loginUser, error: loginError } = await supabase
+          .from('utenti')
+          .select('*')
+          .eq('email', authEmail)
+          .eq('password', hashedPassword) // Confronto con password codificata
+          .maybeSingle();
+
+        if (loginError) throw loginError;
+        if (!loginUser) throw new Error("Credenziali non valide.");
+        
+        if (!loginUser.is_verified) {
+          setPendingUserId(loginUser.id);
+          setAuthMode('VERIFY');
+          throw new Error("Account non verificato. Inserisci il codice inviato via mail.");
+        }
+
+        const profile: User = {
+          id: loginUser.id,
+          username: loginUser.username,
+          email: loginUser.email,
+          role: loginUser.role as UserRole,
+          avatar: loginUser.avatar,
+          firstName: loginUser.first_name,
+          lastName: loginUser.last_name,
+          birthDate: loginUser.birth_date
+        };
+
+        setUser(profile);
+        localStorage.setItem('tam_tam_user', JSON.stringify(profile));
+        await supabase.from('utenti').update({ last_login: new Date().toISOString() }).eq('id', loginUser.id);
+        setIsAuthModalOpen(false);
+      } else if (authMode === 'VERIFY') {
+        if (!pendingUserId) return;
+
+        const { data: verifiedUser, error: verifyError } = await supabase
+          .from('utenti')
+          .select('*')
+          .eq('id', pendingUserId)
+          .eq('verification_code', verificationCode)
+          .maybeSingle();
+
+        if (verifyError) throw verifyError;
+        if (!verifiedUser) throw new Error("Codice di verifica errato.");
+
+        await supabase
+          .from('utenti')
+          .update({ is_verified: true, verification_code: null })
+          .eq('id', pendingUserId);
+
+        const profile: User = {
+          id: verifiedUser.id,
+          username: verifiedUser.username,
+          email: verifiedUser.email,
+          role: verifiedUser.role as UserRole,
+          avatar: verifiedUser.avatar,
+          firstName: verifiedUser.first_name,
+          lastName: verifiedUser.last_name,
+          birthDate: verifiedUser.birth_date
+        };
+
+        setUser(profile);
+        localStorage.setItem('tam_tam_user', JSON.stringify(profile));
+        setIsAuthModalOpen(false);
+        alert("Account verificato con successo!");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Errore durante l\'autenticazione');
+    } finally {
+      setIsGeneratingAI(false);
     }
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem('tam_tam_user');
+    setUser(null);
   };
 
   const handleAddComment = async (content: string) => {
     if (!selectedArticle || !user) return;
-    
     try {
       const { data, error } = await supabase
         .from('comments')
@@ -146,7 +296,6 @@ const App: React.FC = () => {
         .eq('id', articleId);
       
       if (error) throw error;
-      
       setArticles(prev => prev.map(a => a.id === articleId ? { ...a, likes: newLikes } : a));
     } catch (error) {
       console.error("Errore aggiornamento like:", error);
@@ -193,7 +342,6 @@ const App: React.FC = () => {
           const { error } = await supabase
             .from('testata')
             .upsert({ id: 'header_image', imma_testata: base64String });
-
           if (error) throw error;
           setHeaderImage(base64String);
         } catch (error) {
@@ -219,13 +367,8 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 font-sans">
-      {/* Header Newspaper Style */}
-      <header className="bg-white py-2 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col items-center">
-        </div>
-      </header>
+      <header className="bg-white py-2 px-4"></header>
 
-      {/* Main Content - 3 COLUMNS RESPONSIVE ORDER */}
       <main className="flex-1 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-10">
         {isLoading ? (
           <div className="lg:col-span-12 py-32 text-center flex flex-col items-center">
@@ -234,10 +377,8 @@ const App: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* COLUMN 1: Testata & Vertical Nav (MOBILE ORDER: 1) */}
+            {/* COLUMN 1: Testata & Vertical Nav */}
             <aside className="lg:col-span-3 space-y-6 order-1 lg:order-1 lg:border-r border-stone-200 lg:pr-6">
-              
-              {/* Testata Image */}
               <div className="w-full">
                 {headerImage ? (
                   <div className="group relative">
@@ -265,48 +406,26 @@ const App: React.FC = () => {
                 )}
               </div>
 
-              {/* Data */}
               <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-8">
                 {new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
 
-              {/* VERTICAL MENU */}
               <nav className="flex flex-col space-y-1">
                 <h3 className="text-[10px] font-black uppercase text-stone-400 mb-4 tracking-widest border-b border-stone-200 pb-1">Sezioni Navigazione</h3>
-                
-                <button 
-                  onClick={() => setSelectedCategory('All')} 
-                  style={navStyles}
-                  className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}
-                >
-                  Home Page
-                </button>
-                
+                <button onClick={() => setSelectedCategory('All')} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}>Home Page</button>
                 {CATEGORIES.map(cat => (
-                  <button 
-                    key={cat} 
-                    onClick={() => setSelectedCategory(cat)}
-                    style={navStyles}
-                    className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}
-                  >
-                    {cat}
-                  </button>
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}>{cat}</button>
                 ))}
               </nav>
             </aside>
 
-            {/* COLUMN 3: Top Opinioni & Profile (MOBILE ORDER: 2) */}
+            {/* COLUMN 3: Top Opinioni & Profile */}
             <aside className="lg:col-span-3 space-y-8 order-2 lg:order-3 lg:border-l border-stone-200 lg:pl-6">
-              {/* TOP OPINIONI */}
               <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
                 <h3 className="text-lg font-bold uppercase border-b border-stone-800 mb-6 newspaper-font">Top Opinioni</h3>
                 <div className="space-y-4">
                   {topOpinions.map((op, idx) => (
-                    <div 
-                      key={op.id} 
-                      className="group cursor-pointer border-b border-stone-50 pb-3 last:border-0"
-                      onClick={() => setSelectedArticle(op)}
-                    >
+                    <div key={op.id} className="group cursor-pointer border-b border-stone-50 pb-3 last:border-0" onClick={() => setSelectedArticle(op)}>
                       <div className="flex items-start gap-3">
                         <span className="text-2xl font-black text-stone-200 group-hover:text-stone-800 transition-colors">0{idx + 1}</span>
                         <div className="flex-1">
@@ -325,58 +444,129 @@ const App: React.FC = () => {
                 </div>
               </section>
 
-              {/* Profilo */}
               <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
                 <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font text-center">Profilo</h3>
                 {user ? (
                   <div className="flex flex-col items-center text-center">
                     <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-4 grayscale" alt="Avatar"/>
-                    <h4 className="text-lg font-bold newspaper-font mb-1">{user.username}</h4>
-                    <p className="text-[10px] uppercase font-black text-stone-400 mb-6 tracking-widest">{user.email}</p>
-                    <button onClick={() => setUser(null)} className="w-full bg-stone-100 hover:bg-stone-200 text-stone-900 text-[10px] font-black py-2 uppercase rounded">Disconnetti</button>
+                    <h4 className="text-lg font-bold newspaper-font mb-1">{user.firstName} {user.lastName}</h4>
+                    <p className="text-[10px] uppercase font-black text-stone-400 mb-1 tracking-widest">@{user.username}</p>
+                    <div className="mb-6">
+                      <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded">
+                        {user.role}
+                      </span>
+                    </div>
+                    <button onClick={handleSignOut} className="w-full bg-stone-100 hover:bg-stone-200 text-stone-900 text-[10px] font-black py-2 uppercase rounded transition-colors">Disconnetti</button>
                   </div>
                 ) : (
-                  <button onClick={() => setIsAuthModalOpen(true)} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded">Accedi</button>
+                  <button onClick={() => { setAuthMode('LOGIN'); setIsAuthModalOpen(true); }} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded transition-all hover:bg-stone-700">Accedi / Registrati</button>
                 )}
               </section>
             </aside>
 
-            {/* COLUMN 2: Social Feed (MOBILE ORDER: 3) */}
+            {/* COLUMN 2: Social Feed */}
             <div className="lg:col-span-6 space-y-6 order-3 lg:order-2">
-              {(user?.role === UserRole.ADMIN || user?.role === UserRole.AUTHOR) && (
+              {user && (user.role === UserRole.ADMIN || user.role === UserRole.AUTHOR) && (
                 <div className="bg-white border border-stone-200 p-4 rounded-xl shadow-sm mb-8">
                   <div className="flex gap-4 items-center">
-                    <img src={user?.avatar} className="w-10 h-10 rounded-full grayscale border border-stone-100" alt="me" />
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex-1 text-left bg-stone-50 text-stone-400 p-3 rounded-full text-sm border border-stone-100">
-                      Cosa bolle in pentola, {user?.username.split('_')[0]}?
-                    </button>
+                    <img src={user.avatar} className="w-10 h-10 rounded-full grayscale border border-stone-100" alt="me" />
+                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex-1 text-left bg-stone-50 text-stone-400 p-3 rounded-full text-sm border border-stone-100 hover:bg-stone-100 transition-colors">Cosa bolle in pentola, {user.firstName}?</button>
                   </div>
                 </div>
               )}
               
               <div className="space-y-4">
-                {filteredArticles.length > 0 ? (
+                {articles.length > 0 ? (
                   filteredArticles.map(article => (
-                    <ArticleCard 
-                      key={article.id} 
-                      article={article} 
-                      onClick={setSelectedArticle}
-                      onLike={(newLikes) => handleUpdateLike(article.id, newLikes)}
-                    />
+                    <ArticleCard key={article.id} article={article} onClick={setSelectedArticle} onLike={(newLikes) => handleUpdateLike(article.id, newLikes)} />
                   ))
                 ) : (
-                  <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-stone-200 text-stone-400 italic">
-                    Ancora nessuna cronaca in questa sezione.
-                  </div>
+                  <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-stone-200 text-stone-400 italic">Ancora nessuna cronaca in questa sezione.</div>
                 )}
               </div>
             </div>
-
           </>
         )}
       </main>
 
-      {/* MODAL ARTICOLO */}
+      {/* AUTH MODAL */}
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
+          <div className="bg-white p-8 md:p-12 max-w-md w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
+            <h2 className="text-4xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
+              {authMode === 'LOGIN' ? 'Accesso' : authMode === 'REGISTER' ? 'Registrazione' : 'Verifica Mail'}
+            </h2>
+            <p className="text-center text-[10px] text-stone-400 uppercase font-black mb-8 tracking-[0.2em]">Il Mondo Tam Tam</p>
+            
+            <form onSubmit={handleAuth} className="space-y-4">
+              {authMode === 'REGISTER' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <input required type="text" placeholder="Nome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                  <input required type="text" placeholder="Cognome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                  <div className="col-span-2">
+                    <label className="text-[9px] font-black uppercase text-stone-400 ml-1">Data di Nascita</label>
+                    <input required type="date" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none mt-1" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+                  </div>
+                  <input required type="email" placeholder="Indirizzo Email" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+                  <input required type="password" placeholder="Password" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+                </div>
+              )}
+              
+              {authMode === 'LOGIN' && (
+                <>
+                  <input required type="email" placeholder="Indirizzo Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+                  <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+                </>
+              )}
+
+              {authMode === 'VERIFY' && (
+                <div className="space-y-4 text-center">
+                  <p className="text-xs text-stone-600 font-serif leading-relaxed">Abbiamo inviato un codice a 6 cifre alla tua email. Inseriscilo qui sotto per attivare l'account.</p>
+                  <input 
+                    required 
+                    type="text" 
+                    maxLength={6} 
+                    placeholder="000000" 
+                    className="w-full p-4 border-2 border-stone-800 rounded-lg text-2xl font-black text-center tracking-[0.5em] outline-none" 
+                    value={verificationCode} 
+                    onChange={(e) => setVerificationCode(e.target.value)} 
+                  />
+                  <div className="pt-2">
+                    <button 
+                      type="button" 
+                      onClick={handleResendCode} 
+                      disabled={isGeneratingAI}
+                      className="text-[10px] font-black uppercase text-stone-400 hover:text-stone-900 tracking-widest transition-colors disabled:opacity-50"
+                    >
+                      Invia nuovamente il codice
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {authError && <p className="text-red-600 text-[10px] font-bold bg-red-50 p-2 rounded text-center">{authError}</p>}
+              
+              <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-stone-700 transition-colors rounded-lg">
+                {isGeneratingAI ? 'ELABORAZIONE...' : (authMode === 'LOGIN' ? 'ACCEDI' : authMode === 'REGISTER' ? 'REGISTRATI ORA' : 'VERIFICA ORA')}
+              </button>
+            </form>
+
+            <div className="mt-8 pt-6 border-t border-stone-100 text-center">
+              {authMode !== 'VERIFY' ? (
+                <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
+                  {authMode === 'LOGIN' ? 'Non hai un account? Registrati' : 'Hai già un account? Accedi'}
+                </button>
+              ) : (
+                <button onClick={() => { setAuthMode('LOGIN'); setPendingUserId(null); }} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
+                  Torna al Login
+                </button>
+              )}
+            </div>
+            <button onClick={() => setIsAuthModalOpen(false)} className="mt-4 w-full text-stone-300 text-[9px] font-bold uppercase hover:text-red-600 tracking-widest">Chiudi</button>
+          </div>
+        </div>
+      )}
+
       {selectedArticle && (
         <div className="fixed inset-0 z-50 bg-black/90 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
           <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl animate-in slide-in-from-bottom-10 duration-500 border-x-[12px] border-stone-800">
@@ -403,7 +593,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL CAMBIO TESTATA */}
       {isHeaderModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
           <div className="bg-white p-10 max-w-xl w-full shadow-2xl border-4 border-stone-900 rounded-xl text-center">
@@ -417,22 +606,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL AUTH */}
-      {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex justify-center items-center p-6 backdrop-blur-sm">
-          <div className="bg-white p-10 max-sm w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
-            <h2 className="text-3xl font-bold newspaper-font mb-8 text-center uppercase">Login Redazione</h2>
-            <div className="space-y-4">
-              <button onClick={() => handleLogin(UserRole.READER)} className="w-full border-2 border-stone-900 py-4 text-xs font-black uppercase hover:bg-stone-50 transition-colors rounded-lg">Entra come Lettore</button>
-              <button onClick={() => handleLogin(UserRole.AUTHOR)} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase hover:bg-stone-700 transition-colors rounded-lg">Entra come Autore</button>
-              <button onClick={() => handleLogin(UserRole.ADMIN)} className="w-full bg-red-700 text-white py-4 text-xs font-black uppercase hover:bg-red-800 transition-colors rounded-lg">Entra come Admin</button>
-            </div>
-            <button onClick={() => setIsAuthModalOpen(false)} className="mt-8 w-full text-stone-400 text-[10px] font-bold uppercase hover:text-stone-900 tracking-widest">Annulla</button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL NUOVO ARTICOLO */}
       {isNewArticleModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
           <div className="bg-white max-w-3xl w-full p-10 relative shadow-2xl border-x-8 border-stone-800 rounded-xl">
@@ -441,11 +614,7 @@ const App: React.FC = () => {
             <div className="space-y-6">
               <input type="text" placeholder="Titolo Post..." className="w-full p-4 border-2 border-stone-100 text-2xl font-bold newspaper-font rounded-lg outline-none" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
               <textarea placeholder="Cosa vuoi raccontare?..." className="w-full p-4 border-2 border-stone-100 h-64 text-lg font-serif rounded-lg outline-none" value={newContent} onChange={(e) => setNewContent(e.target.value)} />
-              <button 
-                onClick={handlePublish}
-                disabled={isGeneratingAI || !newTitle || !newContent}
-                className="w-full bg-stone-900 text-white py-5 font-black uppercase tracking-widest text-sm hover:bg-stone-700 disabled:opacity-50 transition-all rounded-xl shadow-lg"
-              >
+              <button onClick={handlePublish} disabled={isGeneratingAI || !newTitle || !newContent} className="w-full bg-stone-900 text-white py-5 font-black uppercase tracking-widest text-sm hover:bg-stone-700 disabled:opacity-50 transition-all rounded-xl shadow-lg">
                 {isGeneratingAI ? 'PUBBLICAZIONE...' : 'PUBBLICA ORA'}
               </button>
             </div>

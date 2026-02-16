@@ -2,14 +2,21 @@
 -- Estensione per UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Tabella Utenti
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT NOT NULL,
-    email TEXT,
-    role TEXT NOT NULL,
+-- Tabella Utenti (Profilo pubblico esteso) - SCOLLEGATA da auth.users
+CREATE TABLE IF NOT EXISTS utenti (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    username TEXT NOT NULL UNIQUE,
+    first_name TEXT,
+    last_name TEXT,
+    birth_date DATE,
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'READER',
     avatar TEXT,
-    last_login TIMESTAMPTZ DEFAULT now()
+    is_verified BOOLEAN DEFAULT false, -- Nuova colonna per verifica mail
+    verification_code TEXT,            -- Nuova colonna per codice di verifica
+    last_login TIMESTAMPTZ DEFAULT now(),
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Tabella Articoli
@@ -19,7 +26,7 @@ CREATE TABLE IF NOT EXISTS articles (
     summary TEXT,
     content TEXT NOT NULL,
     author_name TEXT NOT NULL,
-    author_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    author_id UUID REFERENCES utenti(id) ON DELETE SET NULL,
     category TEXT NOT NULL,
     image_url TEXT,
     likes INTEGER DEFAULT 0,
@@ -31,15 +38,15 @@ CREATE TABLE IF NOT EXISTS comments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     article_id UUID REFERENCES articles(id) ON DELETE CASCADE,
     username TEXT NOT NULL,
-    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES utenti(id) ON DELETE SET NULL,
     content TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Tabella Testata (Sostituisce settings)
+-- Tabella Testata
 CREATE TABLE IF NOT EXISTS testata (
     id TEXT PRIMARY KEY,
-    imma_testata TEXT NOT NULL -- Immagine in formato Base64
+    imma_testata TEXT NOT NULL
 );
 
 -- Inserimento record iniziale per la testata

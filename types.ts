@@ -11,6 +11,9 @@ export interface User {
   email: string;
   role: UserRole;
   avatar: string;
+  firstName?: string;
+  lastName?: string;
+  birthDate?: string;
 }
 
 export interface Comment {
@@ -33,7 +36,7 @@ export interface Article {
   imageUrl: string;
   timestamp: number;
   comments: Comment[];
-  likes?: number; // Nuovo campo per funzionalità social
+  likes?: number;
 }
 
 export type Category = 
