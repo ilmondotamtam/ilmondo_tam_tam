@@ -4,7 +4,7 @@ import { User, Article, UserRole, Category, Comment } from './types';
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
-import { summarizeArticle, suggestHeadline } from './services/geminiService';
+import { summarizeArticle } from './services/geminiService';
 import { supabase } from './services/supabase';
 
 const App: React.FC = () => {
@@ -14,7 +14,6 @@ const App: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY'>('LOGIN');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
-  const [isHeaderModalOpen, setIsHeaderModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -25,7 +24,6 @@ const App: React.FC = () => {
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
-  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [authError, setAuthError] = useState('');
 
   const [headerImage, setHeaderImage] = useState<string>('');
@@ -33,36 +31,66 @@ const App: React.FC = () => {
   const [newContent, setNewContent] = useState('');
   const [newCat, setNewCat] = useState<Category>('Fatti');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    checkLocalSession();
-    fetchData();
+    const init = async () => {
+      await checkSession();
+      await fetchData();
+      setIsLoading(false);
+    };
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        await syncUserProfile(session.user);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // Funzione per codificare la password (SHA-256)
-  const hashPassword = async (password: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const checkSession = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (session?.user) {
+        await syncUserProfile(session.user);
+      }
+    } catch (err) {
+      console.error("Session Check Error:", err);
+    }
   };
 
-  const checkLocalSession = () => {
-    const savedUser = localStorage.getItem('tam_tam_user');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        localStorage.removeItem('tam_tam_user');
+  const syncUserProfile = async (authUser: any) => {
+    try {
+      // Il profilo viene creato dal trigger SQL nel database.
+      // Qui lo recuperiamo semplicemente per caricarlo nello stato dell'app.
+      const { data: profile, error } = await supabase
+        .from('utenti')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (profile) {
+        setUser({
+          id: profile.id,
+          username: profile.username,
+          email: profile.email,
+          role: profile.role as UserRole,
+          avatar: profile.avatar,
+          firstName: profile.first_name,
+          lastName: profile.last_name,
+          birthDate: profile.birth_date
+        });
       }
+    } catch (err) {
+      console.error("Profile Sync Error:", err);
     }
   };
 
   const fetchData = async () => {
-    setIsLoading(true);
     try {
       const { data: articlesData, error: articlesError } = await supabase
         .from('articles')
@@ -70,7 +98,7 @@ const App: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (articlesError) throw articlesError;
-      
+
       const formattedArticles: Article[] = (articlesData || []).map(a => ({
         id: a.id,
         title: a.title,
@@ -93,43 +121,13 @@ const App: React.FC = () => {
       }));
       setArticles(formattedArticles);
 
-      const { data: testataData } = await supabase
-        .from('testata')
-        .select('imma_testata')
-        .eq('id', 'header_image')
-        .single();
-
-      if (testataData) {
-        setHeaderImage(testataData.imma_testata);
+      const { data: testataData } = await supabase.from('testata').select('imma_testata').eq('id', 'header_image').single();
+      if (testataData) setHeaderImage(testataData.imma_testata);
+    } catch (error: any) {
+      console.error("Fetch Error:", error);
+      if (error.message === 'Failed to fetch') {
+        setAuthError("Errore di connessione a Supabase. Controlla la tua connessione o l'URL del progetto.");
       }
-    } catch (error) {
-      console.error("Database Error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-  const handleResendCode = async () => {
-    if (!pendingUserId) return;
-    setAuthError('');
-    setIsGeneratingAI(true);
-    try {
-      const newCode = generateCode();
-      const { error } = await supabase
-        .from('utenti')
-        .update({ verification_code: newCode })
-        .eq('id', pendingUserId);
-      
-      if (error) throw error;
-      
-      console.log(`[SIMULAZIONE MAIL] Nuovo codice: ${newCode}`);
-      alert(`Simulazione: Nuovo codice inviato: ${newCode}`);
-    } catch (err: any) {
-      setAuthError("Errore nel rinvio del codice.");
-    } finally {
-      setIsGeneratingAI(false);
     }
   };
 
@@ -141,214 +139,67 @@ const App: React.FC = () => {
     try {
       if (authMode === 'REGISTER') {
         const username = `${firstName}_${lastName}`.toLowerCase().replace(/\s/g, '');
-        const code = generateCode();
-        const hashedPassword = await hashPassword(authPassword);
+        const { error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              birth_date: birthDate,
+              username: username
+            }
+          }
+        });
 
-        const { data: existing } = await supabase
-          .from('utenti')
-          .select('id')
-          .or(`email.eq.${authEmail},username.eq.${username}`)
-          .maybeSingle();
-
-        if (existing) throw new Error("Email o Nome/Cognome già registrati.");
-
-        const { data: newUser, error: registerError } = await supabase
-          .from('utenti')
-          .insert({
-            username,
-            first_name: firstName,
-            last_name: lastName,
-            birth_date: birthDate,
-            email: authEmail,
-            password: hashedPassword, // Password codificata
-            role: 'READER',
-            is_verified: false,
-            verification_code: code,
-            avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${username}`
-          })
-          .select()
-          .single();
-
-        if (registerError) throw registerError;
-
-        console.log(`[SIMULAZIONE MAIL] Codice per ${authEmail}: ${code}`);
-        alert(`Simulazione: Codice inviato alla mail ${authEmail}: ${code}`);
-        
-        setPendingUserId(newUser.id);
+        if (error) throw error;
         setAuthMode('VERIFY');
       } else if (authMode === 'LOGIN') {
-        const hashedPassword = await hashPassword(authPassword);
-        
-        const { data: loginUser, error: loginError } = await supabase
-          .from('utenti')
-          .select('*')
-          .eq('email', authEmail)
-          .eq('password', hashedPassword) // Confronto con password codificata
-          .maybeSingle();
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
 
-        if (loginError) throw loginError;
-        if (!loginUser) throw new Error("Credenziali non valide.");
-        
-        if (!loginUser.is_verified) {
-          setPendingUserId(loginUser.id);
-          setAuthMode('VERIFY');
-          throw new Error("Account non verificato. Inserisci il codice inviato via mail.");
+        if (error) {
+          if (error.message.includes("Email not confirmed")) {
+            setAuthMode('VERIFY');
+            throw new Error("L'email non è stata verificata. Usa il codice ricevuto.");
+          }
+          throw error;
         }
-
-        const profile: User = {
-          id: loginUser.id,
-          username: loginUser.username,
-          email: loginUser.email,
-          role: loginUser.role as UserRole,
-          avatar: loginUser.avatar,
-          firstName: loginUser.first_name,
-          lastName: loginUser.last_name,
-          birthDate: loginUser.birth_date
-        };
-
-        setUser(profile);
-        localStorage.setItem('tam_tam_user', JSON.stringify(profile));
-        await supabase.from('utenti').update({ last_login: new Date().toISOString() }).eq('id', loginUser.id);
         setIsAuthModalOpen(false);
       } else if (authMode === 'VERIFY') {
-        if (!pendingUserId) return;
+        const { error } = await supabase.auth.verifyOtp({
+          email: authEmail,
+          token: verificationCode,
+          type: 'signup'
+        });
 
-        const { data: verifiedUser, error: verifyError } = await supabase
-          .from('utenti')
-          .select('*')
-          .eq('id', pendingUserId)
-          .eq('verification_code', verificationCode)
-          .maybeSingle();
-
-        if (verifyError) throw verifyError;
-        if (!verifiedUser) throw new Error("Codice di verifica errato.");
-
-        await supabase
-          .from('utenti')
-          .update({ is_verified: true, verification_code: null })
-          .eq('id', pendingUserId);
-
-        const profile: User = {
-          id: verifiedUser.id,
-          username: verifiedUser.username,
-          email: verifiedUser.email,
-          role: verifiedUser.role as UserRole,
-          avatar: verifiedUser.avatar,
-          firstName: verifiedUser.first_name,
-          lastName: verifiedUser.last_name,
-          birthDate: verifiedUser.birth_date
-        };
-
-        setUser(profile);
-        localStorage.setItem('tam_tam_user', JSON.stringify(profile));
+        if (error) throw error;
         setIsAuthModalOpen(false);
-        alert("Account verificato con successo!");
+        await checkSession();
       }
     } catch (err: any) {
-      setAuthError(err.message || 'Errore durante l\'autenticazione');
+      console.error("Auth Error:", err);
+      setAuthError(err.message === 'Failed to fetch' 
+        ? "Impossibile contattare il server. Controlla la configurazione di Supabase." 
+        : err.message || 'Errore durante l\'operazione');
     } finally {
       setIsGeneratingAI(false);
     }
   };
 
-  const handleSignOut = () => {
-    localStorage.removeItem('tam_tam_user');
-    setUser(null);
-  };
-
-  const handleAddComment = async (content: string) => {
-    if (!selectedArticle || !user) return;
+  const handleResendCode = async () => {
+    setAuthError('');
     try {
-      const { data, error } = await supabase
-        .from('comments')
-        .insert([{
-          article_id: selectedArticle.id,
-          username: user.username,
-          user_id: user.id,
-          content: content
-        }])
-        .select()
-        .single();
-
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: authEmail,
+      });
       if (error) throw error;
-
-      const newComment: Comment = {
-        id: data.id,
-        articleId: data.article_id,
-        userId: user.id,
-        username: data.username,
-        content: data.content,
-        timestamp: new Date(data.created_at).getTime()
-      };
-
-      setArticles(articles.map(a => a.id === selectedArticle.id ? { ...a, comments: [newComment, ...a.comments] } : a));
-      setSelectedArticle({ ...selectedArticle, comments: [newComment, ...selectedArticle.comments] });
-    } catch (error) {
-      alert("Errore salvataggio commento");
-    }
-  };
-
-  const handleUpdateLike = async (articleId: string, newLikes: number) => {
-    try {
-      const { error } = await supabase
-        .from('articles')
-        .update({ likes: newLikes })
-        .eq('id', articleId);
-      
-      if (error) throw error;
-      setArticles(prev => prev.map(a => a.id === articleId ? { ...a, likes: newLikes } : a));
-    } catch (error) {
-      console.error("Errore aggiornamento like:", error);
-    }
-  };
-
-  const handlePublish = async () => {
-    if (!user || !newTitle || !newContent) return;
-    setIsGeneratingAI(true);
-    try {
-      const summary = await summarizeArticle(newContent);
-      const { error } = await supabase
-        .from('articles')
-        .insert([{
-          title: newTitle,
-          summary,
-          content: newContent,
-          author_name: user.username,
-          author_id: user.id,
-          category: newCat,
-          likes: 0,
-          image_url: `https://picsum.photos/seed/${Math.random()}/800/450`
-        }]);
-
-      if (error) throw error;
-      await fetchData();
-      setIsNewArticleModalOpen(false);
-      setNewTitle('');
-      setNewContent('');
-    } catch (error) {
-      alert("Errore pubblicazione");
-    } finally {
-      setIsGeneratingAI(false);
-    }
-  };
-
-  const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        try {
-          const { error } = await supabase
-            .from('testata')
-            .upsert({ id: 'header_image', imma_testata: base64String });
-          if (error) throw error;
-          setHeaderImage(base64String);
-        } catch (error) {
-          alert("Errore salvataggio testata");
-        }
-      };
-      reader.readAsDataURL(file);
+      alert("Nuovo codice inviato!");
+    } catch (err: any) {
+      setAuthError(err.message);
     }
   };
 
@@ -367,257 +218,148 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 font-sans">
-      <header className="bg-white py-2 px-4"></header>
-
       <main className="flex-1 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-10">
         {isLoading ? (
           <div className="lg:col-span-12 py-32 text-center flex flex-col items-center">
             <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
-            <p className="mt-6 text-stone-400 newspaper-font italic text-xl">Consultando gli archivi digitali...</p>
+            <p className="mt-6 text-stone-400 newspaper-font italic text-xl">Collegamento al database in corso...</p>
           </div>
         ) : (
           <>
-            {/* COLUMN 1: Testata & Vertical Nav */}
-            <aside className="lg:col-span-3 space-y-6 order-1 lg:order-1 lg:border-r border-stone-200 lg:pr-6">
+            <aside className="lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6">
               <div className="w-full">
-                {headerImage ? (
-                  <div className="group relative">
-                    <img 
-                      src={headerImage} 
-                      alt="Testata" 
-                      className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm transform scale-110 origin-top transition-transform duration-300" 
-                    />
-                    {user?.role === UserRole.ADMIN && (
-                      <button 
-                        onClick={() => setIsHeaderModalOpen(true)} 
-                        className="absolute bottom-6 right-0 bg-white/90 text-[8px] font-black border border-stone-800 px-2 py-1 rounded hover:bg-stone-900 hover:text-white transition-all shadow-sm z-10"
-                      >
-                        MODIFICA
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-full h-32 flex flex-col items-center justify-center bg-stone-100 border-2 border-dashed border-stone-300 rounded-lg">
-                    <p className="text-stone-400 text-[10px] italic text-center px-4 mb-2">Immagine Testata Assente</p>
-                    {user?.role === UserRole.ADMIN && (
-                      <button onClick={() => setIsHeaderModalOpen(true)} className="text-[9px] font-bold bg-stone-800 text-white px-2 py-1 rounded">CARICA</button>
-                    )}
-                  </div>
+                {headerImage && (
+                  <img src={headerImage} alt="Testata" className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm" />
                 )}
               </div>
-
               <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-8">
                 {new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
-
               <nav className="flex flex-col space-y-1">
-                <h3 className="text-[10px] font-black uppercase text-stone-400 mb-4 tracking-widest border-b border-stone-200 pb-1">Sezioni Navigazione</h3>
-                <button onClick={() => setSelectedCategory('All')} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}>Home Page</button>
+                <button onClick={() => setSelectedCategory('All')} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
                 {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all hover:bg-stone-100 hover:pl-4 ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white shadow-sm' : 'text-stone-800'}`}>{cat}</button>
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
                 ))}
               </nav>
             </aside>
 
-            {/* COLUMN 3: Top Opinioni & Profile */}
-            <aside className="lg:col-span-3 space-y-8 order-2 lg:order-3 lg:border-l border-stone-200 lg:pl-6">
-              <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
-                <h3 className="text-lg font-bold uppercase border-b border-stone-800 mb-6 newspaper-font">Top Opinioni</h3>
-                <div className="space-y-4">
+            <div className="lg:col-span-6 space-y-6">
+              <div className="space-y-4">
+                {filteredArticles.length > 0 ? (
+                  filteredArticles.map(article => (
+                    <ArticleCard key={article.id} article={article} onClick={setSelectedArticle} />
+                  ))
+                ) : (
+                  <div className="py-20 text-center text-stone-400 newspaper-font italic text-xl">
+                    Nessun articolo trovato in questa categoria.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <aside className="lg:col-span-3 space-y-8 lg:border-l border-stone-200 lg:pl-6 text-center">
+              <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
+                <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">Mondo Tam Tam</h3>
+                {user ? (
+                  <>
+                    <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-4 mx-auto grayscale" alt="Profile" />
+                    <h4 className="text-lg font-bold newspaper-font mb-1">{user.firstName} {user.lastName}</h4>
+                    <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6">{user.role}</span>
+                    <button onClick={() => supabase.auth.signOut()} className="w-full bg-stone-100 text-stone-900 text-[10px] font-black py-2 uppercase rounded hover:bg-stone-200">Esci</button>
+                  </>
+                ) : (
+                  <button onClick={() => { setAuthMode('LOGIN'); setIsAuthModalOpen(true); }} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded hover:bg-stone-700 transition-colors shadow-lg">Entra o Registrati</button>
+                )}
+              </section>
+
+              <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm text-left">
+                <h3 className="text-sm font-bold uppercase border-b border-stone-800 mb-4 newspaper-font">Popolari</h3>
+                <div className="space-y-3">
                   {topOpinions.map((op, idx) => (
-                    <div key={op.id} className="group cursor-pointer border-b border-stone-50 pb-3 last:border-0" onClick={() => setSelectedArticle(op)}>
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl font-black text-stone-200 group-hover:text-stone-800 transition-colors">0{idx + 1}</span>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold leading-tight group-hover:text-red-600 transition-colors line-clamp-2">{op.title}</h4>
-                          <div className="flex items-center justify-between mt-2">
-                             <span className="text-[10px] text-stone-400 font-bold uppercase">Di {op.authorName}</span>
-                             <div className="flex items-center gap-1">
-                               <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                               <span className="text-[10px] font-bold text-stone-600">{op.likes}</span>
-                             </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div key={op.id} className="cursor-pointer group" onClick={() => setSelectedArticle(op)}>
+                      <h4 className="text-xs font-bold leading-tight group-hover:text-red-600 line-clamp-2">0{idx+1}. {op.title}</h4>
                     </div>
                   ))}
                 </div>
               </section>
-
-              <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
-                <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font text-center">Profilo</h3>
-                {user ? (
-                  <div className="flex flex-col items-center text-center">
-                    <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-4 grayscale" alt="Avatar"/>
-                    <h4 className="text-lg font-bold newspaper-font mb-1">{user.firstName} {user.lastName}</h4>
-                    <p className="text-[10px] uppercase font-black text-stone-400 mb-1 tracking-widest">@{user.username}</p>
-                    <div className="mb-6">
-                      <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded">
-                        {user.role}
-                      </span>
-                    </div>
-                    <button onClick={handleSignOut} className="w-full bg-stone-100 hover:bg-stone-200 text-stone-900 text-[10px] font-black py-2 uppercase rounded transition-colors">Disconnetti</button>
-                  </div>
-                ) : (
-                  <button onClick={() => { setAuthMode('LOGIN'); setIsAuthModalOpen(true); }} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded transition-all hover:bg-stone-700">Accedi / Registrati</button>
-                )}
-              </section>
             </aside>
-
-            {/* COLUMN 2: Social Feed */}
-            <div className="lg:col-span-6 space-y-6 order-3 lg:order-2">
-              {user && (user.role === UserRole.ADMIN || user.role === UserRole.AUTHOR) && (
-                <div className="bg-white border border-stone-200 p-4 rounded-xl shadow-sm mb-8">
-                  <div className="flex gap-4 items-center">
-                    <img src={user.avatar} className="w-10 h-10 rounded-full grayscale border border-stone-100" alt="me" />
-                    <button onClick={() => setIsNewArticleModalOpen(true)} className="flex-1 text-left bg-stone-50 text-stone-400 p-3 rounded-full text-sm border border-stone-100 hover:bg-stone-100 transition-colors">Cosa bolle in pentola, {user.firstName}?</button>
-                  </div>
-                </div>
-              )}
-              
-              <div className="space-y-4">
-                {articles.length > 0 ? (
-                  filteredArticles.map(article => (
-                    <ArticleCard key={article.id} article={article} onClick={setSelectedArticle} onLike={(newLikes) => handleUpdateLike(article.id, newLikes)} />
-                  ))
-                ) : (
-                  <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-stone-200 text-stone-400 italic">Ancora nessuna cronaca in questa sezione.</div>
-                )}
-              </div>
-            </div>
           </>
         )}
       </main>
 
-      {/* AUTH MODAL */}
       {isAuthModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
           <div className="bg-white p-8 md:p-12 max-w-md w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
-            <h2 className="text-4xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
-              {authMode === 'LOGIN' ? 'Accesso' : authMode === 'REGISTER' ? 'Registrazione' : 'Verifica Mail'}
+            <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
+              {authMode === 'LOGIN' ? 'Bentornato' : authMode === 'REGISTER' ? 'Nuova Voce' : 'Conferma Identità'}
             </h2>
-            <p className="text-center text-[10px] text-stone-400 uppercase font-black mb-8 tracking-[0.2em]">Il Mondo Tam Tam</p>
+            <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">Il Battito del Mondo</p>
             
             <form onSubmit={handleAuth} className="space-y-4">
               {authMode === 'REGISTER' && (
                 <div className="grid grid-cols-2 gap-3">
-                  <input required type="text" placeholder="Nome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                  <input required type="text" placeholder="Cognome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                  <div className="col-span-2">
-                    <label className="text-[9px] font-black uppercase text-stone-400 ml-1">Data di Nascita</label>
-                    <input required type="date" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none mt-1" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
-                  </div>
-                  <input required type="email" placeholder="Indirizzo Email" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-                  <input required type="password" placeholder="Password" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+                  <input required placeholder="Nome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                  <input required placeholder="Cognome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={lastName} onChange={e => setLastName(e.target.value)} />
+                  <input required type="date" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={birthDate} onChange={e => setBirthDate(e.target.value)} />
+                  <input required type="email" placeholder="Email" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                  <input required type="password" placeholder="Password" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
                 </div>
               )}
-              
               {authMode === 'LOGIN' && (
                 <>
-                  <input required type="email" placeholder="Indirizzo Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-                  <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm outline-none" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+                  <input required type="email" placeholder="Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                  <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
                 </>
               )}
-
               {authMode === 'VERIFY' && (
                 <div className="space-y-4 text-center">
-                  <p className="text-xs text-stone-600 font-serif leading-relaxed">Abbiamo inviato un codice a 6 cifre alla tua email. Inseriscilo qui sotto per attivare l'account.</p>
-                  <input 
-                    required 
-                    type="text" 
-                    maxLength={6} 
-                    placeholder="000000" 
-                    className="w-full p-4 border-2 border-stone-800 rounded-lg text-2xl font-black text-center tracking-[0.5em] outline-none" 
-                    value={verificationCode} 
-                    onChange={(e) => setVerificationCode(e.target.value)} 
-                  />
-                  <div className="pt-2">
-                    <button 
-                      type="button" 
-                      onClick={handleResendCode} 
-                      disabled={isGeneratingAI}
-                      className="text-[10px] font-black uppercase text-stone-400 hover:text-stone-900 tracking-widest transition-colors disabled:opacity-50"
-                    >
-                      Invia nuovamente il codice
-                    </button>
-                  </div>
+                  <p className="text-xs text-stone-600 font-serif">Inserisci il codice a 6 cifre inviato a <b>{authEmail}</b>.</p>
+                  <input required maxLength={6} placeholder="000000" className="w-full p-4 border-2 border-stone-800 rounded-lg text-2xl font-black text-center tracking-[0.5em]" value={verificationCode} onChange={e => setVerificationCode(e.target.value)} />
+                  <button type="button" onClick={handleResendCode} className="text-[10px] font-black uppercase text-stone-400 hover:text-stone-900 tracking-widest">Invia di nuovo</button>
                 </div>
               )}
-              
-              {authError && <p className="text-red-600 text-[10px] font-bold bg-red-50 p-2 rounded text-center">{authError}</p>}
-              
-              <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-stone-700 transition-colors rounded-lg">
-                {isGeneratingAI ? 'ELABORAZIONE...' : (authMode === 'LOGIN' ? 'ACCEDI' : authMode === 'REGISTER' ? 'REGISTRATI ORA' : 'VERIFICA ORA')}
+
+              {authError && (
+                <div className="bg-red-50 border-l-4 border-red-500 p-3">
+                   <p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p>
+                   {authError.includes("fetch") && <p className="text-[9px] mt-1 text-red-600">Tip: Controlla che il tuo progetto Supabase non sia sospeso.</p>}
+                </div>
+              )}
+
+              <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
+                {isGeneratingAI ? 'ELABORAZIONE...' : (authMode === 'LOGIN' ? 'ACCEDI' : authMode === 'REGISTER' ? 'REGISTRATI ORA' : 'VERIFICA CODICE')}
               </button>
             </form>
 
             <div className="mt-8 pt-6 border-t border-stone-100 text-center">
-              {authMode !== 'VERIFY' ? (
-                <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
-                  {authMode === 'LOGIN' ? 'Non hai un account? Registrati' : 'Hai già un account? Accedi'}
-                </button>
-              ) : (
-                <button onClick={() => { setAuthMode('LOGIN'); setPendingUserId(null); }} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
-                  Torna al Login
-                </button>
-              )}
+              <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
+                {authMode === 'LOGIN' ? 'Non hai un account? Iscriviti' : 'Hai già un account? Entra'}
+              </button>
             </div>
-            <button onClick={() => setIsAuthModalOpen(false)} className="mt-4 w-full text-stone-300 text-[9px] font-bold uppercase hover:text-red-600 tracking-widest">Chiudi</button>
+            <button onClick={() => setIsAuthModalOpen(false)} className="mt-4 w-full text-stone-300 text-[9px] font-bold uppercase hover:text-red-600">Annulla</button>
           </div>
         </div>
       )}
 
       {selectedArticle && (
         <div className="fixed inset-0 z-50 bg-black/90 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
-          <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl animate-in slide-in-from-bottom-10 duration-500 border-x-[12px] border-stone-800">
+          <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl border-x-[12px] border-stone-800 animate-in fade-in zoom-in duration-300">
             <button onClick={() => setSelectedArticle(null)} className="absolute top-6 right-6 text-3xl font-light hover:text-red-600 transition-colors">✕</button>
             <div className="text-center mb-12">
               <span className="text-xs font-black text-red-600 uppercase tracking-[0.3em]">{selectedArticle.category}</span>
               <h2 className="text-4xl md:text-6xl font-bold newspaper-font my-6 leading-[1.1]">{selectedArticle.title}</h2>
               <div className="flex justify-center gap-8 text-stone-400 text-sm italic font-serif border-y border-stone-100 py-3">
-                <span className="flex items-center gap-2">
-                  <img src={`https://api.dicebear.com/7.x/miniavs/svg?seed=${selectedArticle.authorName}`} className="w-6 h-6 rounded-full border border-stone-200" alt="auth" />
-                  Di {selectedArticle.authorName}
-                </span>
-                <span>{new Date(selectedArticle.timestamp).toLocaleDateString()}</span>
+                <span>Inviato da {selectedArticle.authorName}</span>
+                <span>{new Date(selectedArticle.timestamp).toLocaleDateString('it-IT')}</span>
               </div>
             </div>
-            <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale shadow-xl rounded-lg" />
-            <div className="prose prose-stone max-w-none text-stone-800 leading-[1.8] text-lg font-serif">
+            <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale rounded shadow-lg" alt="Cover" />
+            <div className="prose prose-stone max-w-none text-stone-800 text-lg font-serif leading-relaxed">
               {selectedArticle.content.split('\n').map((p, i) => (
-                <p key={i} className="mb-8 first-letter:text-6xl first-letter:font-bold first-letter:mr-3 first-letter:float-left first-letter:mt-2 first-letter:newspaper-font">{p}</p>
+                <p key={i} className="mb-6">{p}</p>
               ))}
             </div>
-            <CommentSection comments={selectedArticle.comments} currentUser={user} onAddComment={handleAddComment} />
-          </div>
-        </div>
-      )}
-
-      {isHeaderModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
-          <div className="bg-white p-10 max-w-xl w-full shadow-2xl border-4 border-stone-900 rounded-xl text-center">
-            <h2 className="text-3xl font-bold newspaper-font mb-6 border-b-2 border-stone-800 pb-2 uppercase">Gestione Testata</h2>
-            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleHeaderUpload} />
-            <div className="space-y-4">
-              <button onClick={() => fileInputRef.current?.click()} className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest rounded-lg">Carica Immagine</button>
-              <button onClick={() => setIsHeaderModalOpen(false)} className="w-full border-2 border-stone-200 py-4 font-black uppercase tracking-widest rounded-lg">Chiudi</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isNewArticleModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
-          <div className="bg-white max-w-3xl w-full p-10 relative shadow-2xl border-x-8 border-stone-800 rounded-xl">
-            <button onClick={() => setIsNewArticleModalOpen(false)} className="absolute top-6 right-6 text-2xl hover:text-red-600">✕</button>
-            <h2 className="text-4xl font-bold newspaper-font mb-8 border-b-4 border-stone-800 pb-2 uppercase">Crea un Post</h2>
-            <div className="space-y-6">
-              <input type="text" placeholder="Titolo Post..." className="w-full p-4 border-2 border-stone-100 text-2xl font-bold newspaper-font rounded-lg outline-none" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-              <textarea placeholder="Cosa vuoi raccontare?..." className="w-full p-4 border-2 border-stone-100 h-64 text-lg font-serif rounded-lg outline-none" value={newContent} onChange={(e) => setNewContent(e.target.value)} />
-              <button onClick={handlePublish} disabled={isGeneratingAI || !newTitle || !newContent} className="w-full bg-stone-900 text-white py-5 font-black uppercase tracking-widest text-sm hover:bg-stone-700 disabled:opacity-50 transition-all rounded-xl shadow-lg">
-                {isGeneratingAI ? 'PUBBLICAZIONE...' : 'PUBBLICA ORA'}
-              </button>
-            </div>
+            <CommentSection comments={selectedArticle.comments} currentUser={user} onAddComment={() => fetchData()} />
           </div>
         </div>
       )}
