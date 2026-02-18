@@ -4,7 +4,6 @@ import { User, Article, UserRole, Category, Comment } from './types';
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
-import { summarizeArticle } from './services/geminiService';
 import { supabase } from './services/supabase';
 
 const App: React.FC = () => {
@@ -17,7 +16,7 @@ const App: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Form State
+  // Form State Auth
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -27,10 +26,15 @@ const App: React.FC = () => {
   const [contractAccepted, setContractAccepted] = useState(false);
   const [authError, setAuthError] = useState('');
 
-  const [headerImage, setHeaderImage] = useState<string>('');
+  // Form State New Article
   const [newTitle, setNewTitle] = useState('');
+  const [newSummary, setNewSummary] = useState('');
   const [newContent, setNewContent] = useState('');
-  const [newCat, setNewCat] = useState<Category>('Fatti');
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const [newArticleCategory, setNewArticleCategory] = useState<Category>('Fatti');
+  const [articleError, setArticleError] = useState('');
+
+  const [headerImage, setHeaderImage] = useState<string>('');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   useEffect(() => {
@@ -44,7 +48,7 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         await syncUserProfile(session.user);
-        setIsAuthModalOpen(false); // Chiude il modal se l'utente si è verificato e loggato
+        setIsAuthModalOpen(false);
       } else {
         setUser(null);
       }
@@ -160,7 +164,7 @@ const App: React.FC = () => {
         });
 
         if (error) throw error;
-        setAuthMode('VERIFY'); // Passa al messaggio di "Controlla Email"
+        setAuthMode('VERIFY');
       } else if (authMode === 'LOGIN') {
         const { error } = await supabase.auth.signInWithPassword({
           email: authEmail,
@@ -181,6 +185,42 @@ const App: React.FC = () => {
       setAuthError(err.message === 'Failed to fetch' 
         ? "Impossibile contattare il server. Controlla la configurazione di Supabase." 
         : err.message || 'Errore durante l\'operazione');
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleCreateArticle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN)) return;
+    
+    setArticleError('');
+    setIsGeneratingAI(true);
+
+    try {
+      // Inserimento nel DB (Riassunto ora manuale)
+      const { error } = await supabase.from('articles').insert({
+        title: newTitle,
+        content: newContent,
+        summary: newSummary,
+        category: newArticleCategory,
+        image_url: newImageUrl || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000',
+        author_id: user.id,
+        author_name: `${user.firstName} ${user.lastName}`
+      });
+
+      if (error) throw error;
+
+      // Reset e chiusura
+      setNewTitle('');
+      setNewSummary('');
+      setNewContent('');
+      setNewImageUrl('');
+      setIsNewArticleModalOpen(false);
+      await fetchData();
+    } catch (err: any) {
+      console.error("Article Creation Error:", err);
+      setArticleError(err.message || "Errore durante il salvataggio dell'articolo.");
     } finally {
       setIsGeneratingAI(false);
     }
@@ -262,6 +302,16 @@ const App: React.FC = () => {
                     <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-4 mx-auto grayscale" alt="Profile" />
                     <h4 className="text-lg font-bold newspaper-font mb-1">{user.firstName} {user.lastName}</h4>
                     <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6">{user.role}</span>
+                    
+                    {(user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN) && (
+                      <button 
+                        onClick={() => setIsNewArticleModalOpen(true)}
+                        className="w-full mb-3 bg-red-600 text-white text-[10px] font-black py-3 uppercase rounded shadow hover:bg-red-700 transition-colors"
+                      >
+                        Scrivi Articolo
+                      </button>
+                    )}
+
                     <button onClick={() => supabase.auth.signOut()} className="w-full bg-stone-100 text-stone-900 text-[10px] font-black py-2 uppercase rounded hover:bg-stone-200">Esci</button>
                   </>
                 ) : (
@@ -284,6 +334,7 @@ const App: React.FC = () => {
         )}
       </main>
 
+      {/* Modal Auth */}
       {isAuthModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
           <div className="bg-white p-8 md:p-12 max-w-md w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
@@ -303,28 +354,15 @@ const App: React.FC = () => {
                       <input required type="email" placeholder="Email" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
                       <input required type="password" placeholder="Password" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
                       
-                      {/* Checkboxes Acceptance */}
                       <div className="col-span-2 space-y-3 mt-4 px-1">
                         <div className="flex items-start gap-3">
-                          <input 
-                            type="checkbox" 
-                            id="privacy" 
-                            className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer"
-                            checked={privacyAccepted}
-                            onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                          />
+                          <input type="checkbox" id="privacy" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={privacyAccepted} onChange={(e) => setPrivacyAccepted(e.target.checked)} />
                           <label htmlFor="privacy" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
                             Accetto la <a href="/privacy.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a> del sito.
                           </label>
                         </div>
                         <div className="flex items-start gap-3">
-                          <input 
-                            type="checkbox" 
-                            id="contract" 
-                            className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer"
-                            checked={contractAccepted}
-                            onChange={(e) => setContractAccepted(e.target.checked)}
-                          />
+                          <input type="checkbox" id="contract" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={contractAccepted} onChange={(e) => setContractAccepted(e.target.checked)} />
                           <label htmlFor="contract" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
                             Accetto i termini del <a href="/contratto.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
                           </label>
@@ -338,18 +376,11 @@ const App: React.FC = () => {
                       <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
                     </>
                   )}
-
-                  {authError && (
-                    <div className="bg-red-50 border-l-4 border-red-500 p-3">
-                       <p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p>
-                    </div>
-                  )}
-
+                  {authError && <div className="bg-red-50 border-l-4 border-red-500 p-3"><p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p></div>}
                   <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
                     {isGeneratingAI ? 'CARICAMENTO...' : (authMode === 'LOGIN' ? 'ACCEDI' : 'REGISTRATI')}
                   </button>
                 </form>
-
                 <div className="mt-8 pt-6 border-t border-stone-100 text-center">
                   <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
                     {authMode === 'LOGIN' ? 'Nuovo utente? Registrati' : 'Hai un account? Accedi'}
@@ -362,21 +393,13 @@ const App: React.FC = () => {
                   <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-800"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
                 </div>
                 <h2 className="text-2xl font-bold newspaper-font mb-4 uppercase">Controlla la tua Posta</h2>
-                <p className="text-sm text-stone-600 font-serif leading-relaxed mb-6">
-                  Ti abbiamo inviato un'email con un <strong>link di verifica</strong>. Clicca sul link per attivare il tuo account e iniziare a partecipare al Tam Tam globale.
-                </p>
+                <p className="text-sm text-stone-600 font-serif leading-relaxed mb-6">Ti abbiamo inviato un'email con un link di verifica. Clicca sul link per attivare il tuo account.</p>
                 <div className="bg-amber-50 border border-amber-100 p-4 rounded-lg mb-8">
-                  <p className="text-[11px] text-amber-800 font-bold uppercase tracking-tight">
-                    ⚠️ Importante: Ricorda di controllare la cartella <strong>SPAM</strong> o Posta Indesiderata se non ricevi nulla entro pochi minuti.
-                  </p>
+                  <p className="text-[11px] text-amber-800 font-bold uppercase tracking-tight">⚠️ Importante: Ricorda di controllare la cartella SPAM.</p>
                 </div>
                 <div className="space-y-3">
-                  <button onClick={handleResendLink} className="w-full text-[10px] font-black uppercase text-stone-500 hover:text-stone-900 tracking-widest py-2">
-                    Invia di nuovo il link
-                  </button>
-                  <button onClick={() => setAuthMode('LOGIN')} className="w-full bg-stone-900 text-white py-3 text-[10px] font-black uppercase tracking-widest rounded-lg">
-                    Torna al Login
-                  </button>
+                  <button onClick={handleResendLink} className="w-full text-[10px] font-black uppercase text-stone-500 hover:text-stone-900 tracking-widest py-2">Invia di nuovo il link</button>
+                  <button onClick={() => setAuthMode('LOGIN')} className="w-full bg-stone-900 text-white py-3 text-[10px] font-black uppercase tracking-widest rounded-lg">Torna al Login</button>
                 </div>
               </div>
             )}
@@ -385,6 +408,87 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Modal Nuovo Articolo */}
+      {isNewArticleModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
+          <div className="bg-white p-8 md:p-12 max-w-2xl w-full border-t-[12px] border-red-600 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">Nuovo Articolo</h2>
+            <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">Condividi la tua opinione con il mondo</p>
+            
+            <form onSubmit={handleCreateArticle} className="space-y-4">
+              <input 
+                required 
+                placeholder="Titolo dell'articolo" 
+                className="w-full p-4 border-2 border-stone-100 rounded-lg text-lg font-bold newspaper-font" 
+                value={newTitle} 
+                onChange={e => setNewTitle(e.target.value)} 
+              />
+              
+              <div className="grid grid-cols-2 gap-4">
+                <select 
+                  required
+                  className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm bg-white"
+                  value={newArticleCategory}
+                  onChange={e => setNewArticleCategory(e.target.value as Category)}
+                >
+                  {CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <input 
+                  placeholder="URL Immagine Copertina" 
+                  className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
+                  value={newImageUrl} 
+                  onChange={e => setNewImageUrl(e.target.value)} 
+                />
+              </div>
+
+              {newImageUrl && (
+                <div className="w-full h-32 rounded-lg overflow-hidden border-2 border-stone-100">
+                  <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              )}
+
+              <textarea 
+                required 
+                placeholder="Sommario dell'articolo (Occhiello/Catenaccio)..." 
+                className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm font-serif h-24 resize-none italic" 
+                value={newSummary} 
+                onChange={e => setNewSummary(e.target.value)} 
+              />
+
+              <textarea 
+                required 
+                placeholder="Inizia a scrivere il corpo dell'articolo qui..." 
+                className="w-full p-4 border-2 border-stone-100 rounded-lg text-sm font-serif min-h-[300px] resize-none" 
+                value={newContent} 
+                onChange={e => setNewContent(e.target.value)} 
+              />
+
+              {articleError && <div className="bg-red-50 border-l-4 border-red-500 p-3"><p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{articleError}</p></div>}
+
+              <div className="flex gap-4">
+                <button 
+                  type="button"
+                  onClick={() => setIsNewArticleModalOpen(false)}
+                  className="flex-1 border-2 border-stone-100 text-stone-400 py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-50 transition-all"
+                >
+                  Annulla
+                </button>
+                <button 
+                  disabled={isGeneratingAI} 
+                  type="submit" 
+                  className="flex-[2] bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all shadow-lg"
+                >
+                  {isGeneratingAI ? 'SALVATAGGIO IN CORSO...' : 'PUBBLICA ARTICOLO'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Articolo Selezionato */}
       {selectedArticle && (
         <div className="fixed inset-0 z-50 bg-black/90 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
           <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl border-x-[12px] border-stone-800">

@@ -18,10 +18,10 @@ CREATE TABLE IF NOT EXISTS public.utenti (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. Abilita RLS (Row Level Security) per sicurezza
+-- 3. Abilita RLS (Row Level Security) per sicurezza su utenti
 ALTER TABLE public.utenti ENABLE ROW LEVEL SECURITY;
 
--- 4. Politiche di accesso (Tutti possono leggere i profili, solo l'utente può modificare il suo)
+-- 4. Politiche di accesso utenti
 CREATE POLICY "Profili pubblici visibili a tutti" ON public.utenti FOR SELECT USING (true);
 CREATE POLICY "Utenti possono aggiornare il proprio profilo" ON public.utenti FOR UPDATE USING (auth.uid() = id);
 
@@ -66,6 +66,24 @@ CREATE TABLE IF NOT EXISTS public.articles (
     image_url TEXT,
     likes INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- RLS per Articoli
+ALTER TABLE public.articles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Articoli visibili a tutti" ON public.articles FOR SELECT USING (true);
+
+CREATE POLICY "Autori possono inserire articoli" ON public.articles FOR INSERT WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.utenti
+    WHERE utenti.id = auth.uid() 
+    AND (utenti.role = 'AUTHOR' OR utenti.role = 'ADMIN')
+  )
+);
+
+CREATE POLICY "Autori possono gestire i propri articoli" ON public.articles FOR ALL USING (
+  auth.uid() = author_id OR 
+  EXISTS (SELECT 1 FROM public.utenti WHERE utenti.id = auth.uid() AND utenti.role = 'ADMIN')
 );
 
 -- 8. Tabella Commenti
