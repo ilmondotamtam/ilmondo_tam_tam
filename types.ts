@@ -18,14 +18,14 @@ export interface User {
 
 export interface Comment {
   id: string;
-  opinioneId: string;
+  articleId: string;
   userId: string;
   username: string;
   content: string;
   timestamp: number;
 }
 
-export interface Opinione {
+export interface Article {
   id: string;
   title: string;
   summary: string;
