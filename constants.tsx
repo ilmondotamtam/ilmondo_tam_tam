@@ -1,5 +1,5 @@
 
-import { Article, Category } from './types';
+import { Opinione, Category } from './types';
 
 export const CATEGORIES: Category[] = [
   'Opinioni', 
@@ -11,7 +11,8 @@ export const CATEGORIES: Category[] = [
   'Oggi parliamo di...'
 ];
 
-export const INITIAL_ARTICLES: Article[] = [
+// Changed Article[] to Opinione[] and updated articleId to opinioneId in comments
+export const INITIAL_ARTICLES: Opinione[] = [
   {
     id: '1',
     title: 'L\'intelligenza Artificiale e il Futuro dell\'Informazione',
@@ -25,7 +26,7 @@ export const INITIAL_ARTICLES: Article[] = [
     comments: [
       {
         id: 'c1',
-        articleId: '1',
+        opinioneId: '1',
         userId: 'u1',
         username: 'Gianni',
         content: 'Articolo molto interessante, spero che l\'etica rimanga al centro.',
@@ -49,7 +50,7 @@ export const INITIAL_ARTICLES: Article[] = [
     id: '3',
     title: 'Festival del Cinema Internazionale',
     summary: 'Le date e gli eventi principali della prossima kermesse cinematografica.',
-    content: 'Tutto pronto per l\'evento dell\'anno che vedrà protagonisti i migliori registi indipendenti...',
+    content: 'Tutto pronto per l\'evento dell\'year che vedrà protagonisti i migliori registi indipendenti...',
     authorId: 'auth1',
     authorName: 'Mario Rossi',
     category: 'Tradizioni e eventi',
