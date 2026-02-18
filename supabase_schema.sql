@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS public.utenti (
     email TEXT NOT NULL UNIQUE,
     role TEXT NOT NULL DEFAULT 'READER',
     avatar TEXT,
+    privacy_accepted BOOLEAN DEFAULT FALSE,
+    contract_accepted BOOLEAN DEFAULT FALSE,
     last_login TIMESTAMPTZ DEFAULT now(),
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -27,7 +29,10 @@ CREATE POLICY "Utenti possono aggiornare il proprio profilo" ON public.utenti FO
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.utenti (id, username, first_name, last_name, birth_date, email, avatar)
+  INSERT INTO public.utenti (
+    id, username, first_name, last_name, birth_date, email, avatar, 
+    privacy_accepted, contract_accepted
+  )
   VALUES (
     new.id,
     COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
@@ -35,7 +40,9 @@ BEGIN
     new.raw_user_meta_data->>'last_name',
     (new.raw_user_meta_data->>'birth_date')::date,
     new.email,
-    'https://api.dicebear.com/7.x/miniavs/svg?seed=' || COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1))
+    'https://api.dicebear.com/7.x/miniavs/svg?seed=' || COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
+    COALESCE((new.raw_user_meta_data->>'privacy_accepted')::boolean, FALSE),
+    COALESCE((new.raw_user_meta_data->>'contract_accepted')::boolean, FALSE)
   );
   RETURN new;
 END;
@@ -47,7 +54,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 7. Tabella Articoli (se non esiste)
+-- 7. Tabella Articoli
 CREATE TABLE IF NOT EXISTS public.articles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
@@ -61,7 +68,7 @@ CREATE TABLE IF NOT EXISTS public.articles (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 8. Tabella Commenti (se non esiste)
+-- 8. Tabella Commenti
 CREATE TABLE IF NOT EXISTS public.comments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     article_id UUID REFERENCES public.articles(id) ON DELETE CASCADE,
@@ -71,7 +78,7 @@ CREATE TABLE IF NOT EXISTS public.comments (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 9. Tabella Testata (se non esiste)
+-- 9. Tabella Testata
 CREATE TABLE IF NOT EXISTS public.testata (
     id TEXT PRIMARY KEY,
     imma_testata TEXT NOT NULL

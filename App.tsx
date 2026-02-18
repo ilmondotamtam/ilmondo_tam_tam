@@ -23,7 +23,8 @@ const App: React.FC = () => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [contractAccepted, setContractAccepted] = useState(false);
   const [authError, setAuthError] = useState('');
 
   const [headerImage, setHeaderImage] = useState<string>('');
@@ -43,6 +44,7 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         await syncUserProfile(session.user);
+        setIsAuthModalOpen(false); // Chiude il modal se l'utente si è verificato e loggato
       } else {
         setUser(null);
       }
@@ -65,8 +67,6 @@ const App: React.FC = () => {
 
   const syncUserProfile = async (authUser: any) => {
     try {
-      // Il profilo viene creato dal trigger SQL nel database.
-      // Qui lo recuperiamo semplicemente per caricarlo nello stato dell'app.
       const { data: profile, error } = await supabase
         .from('utenti')
         .select('*')
@@ -125,15 +125,20 @@ const App: React.FC = () => {
       if (testataData) setHeaderImage(testataData.imma_testata);
     } catch (error: any) {
       console.error("Fetch Error:", error);
-      if (error.message === 'Failed to fetch') {
-        setAuthError("Errore di connessione a Supabase. Controlla la tua connessione o l'URL del progetto.");
-      }
     }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+    
+    if (authMode === 'REGISTER') {
+      if (!privacyAccepted || !contractAccepted) {
+        setAuthError('Devi accettare sia la Privacy Policy che il Contratto per continuare.');
+        return;
+      }
+    }
+
     setIsGeneratingAI(true);
 
     try {
@@ -147,13 +152,15 @@ const App: React.FC = () => {
               first_name: firstName,
               last_name: lastName,
               birth_date: birthDate,
-              username: username
+              username: username,
+              privacy_accepted: privacyAccepted,
+              contract_accepted: contractAccepted
             }
           }
         });
 
         if (error) throw error;
-        setAuthMode('VERIFY');
+        setAuthMode('VERIFY'); // Passa al messaggio di "Controlla Email"
       } else if (authMode === 'LOGIN') {
         const { error } = await supabase.auth.signInWithPassword({
           email: authEmail,
@@ -163,21 +170,11 @@ const App: React.FC = () => {
         if (error) {
           if (error.message.includes("Email not confirmed")) {
             setAuthMode('VERIFY');
-            throw new Error("L'email non è stata verificata. Usa il codice ricevuto.");
+            throw new Error("L'email non è stata confermata. Clicca sul link ricevuto via mail.");
           }
           throw error;
         }
         setIsAuthModalOpen(false);
-      } else if (authMode === 'VERIFY') {
-        const { error } = await supabase.auth.verifyOtp({
-          email: authEmail,
-          token: verificationCode,
-          type: 'signup'
-        });
-
-        if (error) throw error;
-        setIsAuthModalOpen(false);
-        await checkSession();
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
@@ -189,7 +186,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleResendCode = async () => {
+  const handleResendLink = async () => {
     setAuthError('');
     try {
       const { error } = await supabase.auth.resend({
@@ -197,7 +194,7 @@ const App: React.FC = () => {
         email: authEmail,
       });
       if (error) throw error;
-      alert("Nuovo codice inviato!");
+      alert("Link di verifica inviato nuovamente!");
     } catch (err: any) {
       setAuthError(err.message);
     }
@@ -222,7 +219,7 @@ const App: React.FC = () => {
         {isLoading ? (
           <div className="lg:col-span-12 py-32 text-center flex flex-col items-center">
             <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
-            <p className="mt-6 text-stone-400 newspaper-font italic text-xl">Collegamento al database in corso...</p>
+            <p className="mt-6 text-stone-400 newspaper-font italic text-xl">Caricamento in corso...</p>
           </div>
         ) : (
           <>
@@ -251,7 +248,7 @@ const App: React.FC = () => {
                   ))
                 ) : (
                   <div className="py-20 text-center text-stone-400 newspaper-font italic text-xl">
-                    Nessun articolo trovato in questa categoria.
+                    Nessun articolo trovato.
                   </div>
                 )}
               </div>
@@ -259,7 +256,7 @@ const App: React.FC = () => {
 
             <aside className="lg:col-span-3 space-y-8 lg:border-l border-stone-200 lg:pl-6 text-center">
               <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
-                <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">Mondo Tam Tam</h3>
+                <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">Il Tuo Profilo</h3>
                 {user ? (
                   <>
                     <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-4 mx-auto grayscale" alt="Profile" />
@@ -268,16 +265,16 @@ const App: React.FC = () => {
                     <button onClick={() => supabase.auth.signOut()} className="w-full bg-stone-100 text-stone-900 text-[10px] font-black py-2 uppercase rounded hover:bg-stone-200">Esci</button>
                   </>
                 ) : (
-                  <button onClick={() => { setAuthMode('LOGIN'); setIsAuthModalOpen(true); }} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded hover:bg-stone-700 transition-colors shadow-lg">Entra o Registrati</button>
+                  <button onClick={() => { setAuthMode('LOGIN'); setIsAuthModalOpen(true); }} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded hover:bg-stone-700 transition-colors">Accedi / Iscriviti</button>
                 )}
               </section>
 
               <section className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm text-left">
-                <h3 className="text-sm font-bold uppercase border-b border-stone-800 mb-4 newspaper-font">Popolari</h3>
+                <h3 className="text-sm font-bold uppercase border-b border-stone-800 mb-4 newspaper-font">Più Apprezzati</h3>
                 <div className="space-y-3">
                   {topOpinions.map((op, idx) => (
                     <div key={op.id} className="cursor-pointer group" onClick={() => setSelectedArticle(op)}>
-                      <h4 className="text-xs font-bold leading-tight group-hover:text-red-600 line-clamp-2">0{idx+1}. {op.title}</h4>
+                      <h4 className="text-xs font-bold leading-tight group-hover:text-red-600 line-clamp-2">{idx+1}. {op.title}</h4>
                     </div>
                   ))}
                 </div>
@@ -290,66 +287,113 @@ const App: React.FC = () => {
       {isAuthModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
           <div className="bg-white p-8 md:p-12 max-w-md w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
-            <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
-              {authMode === 'LOGIN' ? 'Bentornato' : authMode === 'REGISTER' ? 'Nuova Voce' : 'Conferma Identità'}
-            </h2>
-            <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">Il Battito del Mondo</p>
-            
-            <form onSubmit={handleAuth} className="space-y-4">
-              {authMode === 'REGISTER' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <input required placeholder="Nome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={firstName} onChange={e => setFirstName(e.target.value)} />
-                  <input required placeholder="Cognome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={lastName} onChange={e => setLastName(e.target.value)} />
-                  <input required type="date" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={birthDate} onChange={e => setBirthDate(e.target.value)} />
-                  <input required type="email" placeholder="Email" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-                  <input required type="password" placeholder="Password" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
-                </div>
-              )}
-              {authMode === 'LOGIN' && (
-                <>
-                  <input required type="email" placeholder="Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-                  <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
-                </>
-              )}
-              {authMode === 'VERIFY' && (
-                <div className="space-y-4 text-center">
-                  <p className="text-xs text-stone-600 font-serif">Inserisci il codice a 6 cifre inviato a <b>{authEmail}</b>.</p>
-                  <input required maxLength={6} placeholder="000000" className="w-full p-4 border-2 border-stone-800 rounded-lg text-2xl font-black text-center tracking-[0.5em]" value={verificationCode} onChange={e => setVerificationCode(e.target.value)} />
-                  <button type="button" onClick={handleResendCode} className="text-[10px] font-black uppercase text-stone-400 hover:text-stone-900 tracking-widest">Invia di nuovo</button>
-                </div>
-              )}
+            {authMode !== 'VERIFY' ? (
+              <>
+                <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
+                  {authMode === 'LOGIN' ? 'Bentornato' : 'Unisciti a Noi'}
+                </h2>
+                <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">La Voce del Tam Tam</p>
+                
+                <form onSubmit={handleAuth} className="space-y-4">
+                  {authMode === 'REGISTER' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <input required placeholder="Nome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                      <input required placeholder="Cognome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={lastName} onChange={e => setLastName(e.target.value)} />
+                      <input required type="date" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={birthDate} onChange={e => setBirthDate(e.target.value)} />
+                      <input required type="email" placeholder="Email" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                      <input required type="password" placeholder="Password" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
+                      
+                      {/* Checkboxes Acceptance */}
+                      <div className="col-span-2 space-y-3 mt-4 px-1">
+                        <div className="flex items-start gap-3">
+                          <input 
+                            type="checkbox" 
+                            id="privacy" 
+                            className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer"
+                            checked={privacyAccepted}
+                            onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                          />
+                          <label htmlFor="privacy" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
+                            Accetto la <a href="/privacy.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a> del sito.
+                          </label>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <input 
+                            type="checkbox" 
+                            id="contract" 
+                            className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer"
+                            checked={contractAccepted}
+                            onChange={(e) => setContractAccepted(e.target.checked)}
+                          />
+                          <label htmlFor="contract" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
+                            Accetto i termini del <a href="/contratto.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {authMode === 'LOGIN' && (
+                    <>
+                      <input required type="email" placeholder="Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                      <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
+                    </>
+                  )}
 
-              {authError && (
-                <div className="bg-red-50 border-l-4 border-red-500 p-3">
-                   <p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p>
-                   {authError.includes("fetch") && <p className="text-[9px] mt-1 text-red-600">Tip: Controlla che il tuo progetto Supabase non sia sospeso.</p>}
+                  {authError && (
+                    <div className="bg-red-50 border-l-4 border-red-500 p-3">
+                       <p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p>
+                    </div>
+                  )}
+
+                  <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
+                    {isGeneratingAI ? 'CARICAMENTO...' : (authMode === 'LOGIN' ? 'ACCEDI' : 'REGISTRATI')}
+                  </button>
+                </form>
+
+                <div className="mt-8 pt-6 border-t border-stone-100 text-center">
+                  <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
+                    {authMode === 'LOGIN' ? 'Nuovo utente? Registrati' : 'Hai un account? Accedi'}
+                  </button>
                 </div>
-              )}
-
-              <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
-                {isGeneratingAI ? 'ELABORAZIONE...' : (authMode === 'LOGIN' ? 'ACCEDI' : authMode === 'REGISTER' ? 'REGISTRATI ORA' : 'VERIFICA CODICE')}
-              </button>
-            </form>
-
-            <div className="mt-8 pt-6 border-t border-stone-100 text-center">
-              <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
-                {authMode === 'LOGIN' ? 'Non hai un account? Iscriviti' : 'Hai già un account? Entra'}
-              </button>
-            </div>
-            <button onClick={() => setIsAuthModalOpen(false)} className="mt-4 w-full text-stone-300 text-[9px] font-bold uppercase hover:text-red-600">Annulla</button>
+              </>
+            ) : (
+              <div className="text-center py-6">
+                <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-800"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                </div>
+                <h2 className="text-2xl font-bold newspaper-font mb-4 uppercase">Controlla la tua Posta</h2>
+                <p className="text-sm text-stone-600 font-serif leading-relaxed mb-6">
+                  Ti abbiamo inviato un'email con un <strong>link di verifica</strong>. Clicca sul link per attivare il tuo account e iniziare a partecipare al Tam Tam globale.
+                </p>
+                <div className="bg-amber-50 border border-amber-100 p-4 rounded-lg mb-8">
+                  <p className="text-[11px] text-amber-800 font-bold uppercase tracking-tight">
+                    ⚠️ Importante: Ricorda di controllare la cartella <strong>SPAM</strong> o Posta Indesiderata se non ricevi nulla entro pochi minuti.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <button onClick={handleResendLink} className="w-full text-[10px] font-black uppercase text-stone-500 hover:text-stone-900 tracking-widest py-2">
+                    Invia di nuovo il link
+                  </button>
+                  <button onClick={() => setAuthMode('LOGIN')} className="w-full bg-stone-900 text-white py-3 text-[10px] font-black uppercase tracking-widest rounded-lg">
+                    Torna al Login
+                  </button>
+                </div>
+              </div>
+            )}
+            <button onClick={() => setIsAuthModalOpen(false)} className="mt-4 w-full text-stone-300 text-[9px] font-bold uppercase hover:text-red-600">Chiudi</button>
           </div>
         </div>
       )}
 
       {selectedArticle && (
         <div className="fixed inset-0 z-50 bg-black/90 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
-          <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl border-x-[12px] border-stone-800 animate-in fade-in zoom-in duration-300">
+          <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl border-x-[12px] border-stone-800">
             <button onClick={() => setSelectedArticle(null)} className="absolute top-6 right-6 text-3xl font-light hover:text-red-600 transition-colors">✕</button>
             <div className="text-center mb-12">
               <span className="text-xs font-black text-red-600 uppercase tracking-[0.3em]">{selectedArticle.category}</span>
               <h2 className="text-4xl md:text-6xl font-bold newspaper-font my-6 leading-[1.1]">{selectedArticle.title}</h2>
               <div className="flex justify-center gap-8 text-stone-400 text-sm italic font-serif border-y border-stone-100 py-3">
-                <span>Inviato da {selectedArticle.authorName}</span>
+                <span>Di {selectedArticle.authorName}</span>
                 <span>{new Date(selectedArticle.timestamp).toLocaleDateString('it-IT')}</span>
               </div>
             </div>
