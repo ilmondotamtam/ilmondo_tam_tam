@@ -4,8 +4,8 @@ import { User, Article, UserRole, Category, Comment } from './types';
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
-import { summarizeArticle } from './services/geminiService';
 import { supabase } from './services/supabase';
+import { upload } from '@vercel/blob/client';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -36,18 +36,35 @@ const App: React.FC = () => {
 
   const [headerImage, setHeaderImage] = useState<string>('');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const init = async () => {
-      await checkSession();
-      await fetchData();
-      setIsLoading(false);
+      // Timeout di sicurezza: se dopo 10 secondi non ha finito, forziamo l'avvio
+      const timeout = setTimeout(() => {
+        setIsLoading(false);
+      }, 10000);
+
+      try {
+        // Eseguiamo checkSession e fetchData in parallelo per velocizzare l'avvio
+        await Promise.all([
+          checkSession(),
+          fetchData()
+        ]);
+      } catch (err) {
+        console.error("Initialization Error:", err);
+      } finally {
+        clearTimeout(timeout);
+        setIsLoading(false);
+      }
     };
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        await syncUserProfile(session.user);
+        // Sincronizziamo il profilo in background senza bloccare la UI
+        syncUserProfile(session.user);
         setIsAuthModalOpen(false);
       } else {
         setUser(null);
@@ -70,12 +87,15 @@ const App: React.FC = () => {
   };
 
   const syncUserProfile = async (authUser: any) => {
+    if (!authUser) return;
     try {
       const { data: profile, error } = await supabase
         .from('utenti')
         .select('*')
         .eq('id', authUser.id)
         .maybeSingle();
+
+      if (error) throw error;
 
       if (profile) {
         setUser({
@@ -88,6 +108,18 @@ const App: React.FC = () => {
           lastName: profile.last_name,
           birthDate: profile.birth_date
         });
+      } else {
+        // Se il profilo non esiste ancora (es. trigger in ritardo), impostiamo un profilo temporaneo
+        setUser({
+          id: authUser.id,
+          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'utente',
+          email: authUser.email || '',
+          role: UserRole.READER,
+          avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${authUser.id}`,
+          firstName: authUser.user_metadata?.first_name || '',
+          lastName: authUser.user_metadata?.last_name || '',
+          birthDate: authUser.user_metadata?.birth_date || ''
+        });
       }
     } catch (err) {
       console.error("Profile Sync Error:", err);
@@ -96,14 +128,22 @@ const App: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const { data: articlesData, error: articlesError } = await supabase
-        .from('articles')
-        .select('*, comments(*)')
-        .order('created_at', { ascending: false });
+      // Carichiamo articoli e immagine di testata in parallelo
+      const [articlesRes, testataRes] = await Promise.all([
+        supabase
+          .from('articles')
+          .select('*, comments(*)')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('testata')
+          .select('imma_testata')
+          .eq('id', 'header_image')
+          .maybeSingle() // Usiamo maybeSingle per evitare errori se la riga non esiste
+      ]);
 
-      if (articlesError) throw articlesError;
+      if (articlesRes.error) throw articlesRes.error;
 
-      const formattedArticles: Article[] = (articlesData || []).map(a => ({
+      const formattedArticles: Article[] = (articlesRes.data || []).map(a => ({
         id: a.id,
         title: a.title,
         summary: a.summary,
@@ -125,8 +165,9 @@ const App: React.FC = () => {
       }));
       setArticles(formattedArticles);
 
-      const { data: testataData } = await supabase.from('testata').select('imma_testata').eq('id', 'header_image').single();
-      if (testataData) setHeaderImage(testataData.imma_testata);
+      if (testataRes.data) {
+        setHeaderImage(testataRes.data.imma_testata);
+      }
     } catch (error: any) {
       console.error("Fetch Error:", error);
     }
@@ -178,7 +219,10 @@ const App: React.FC = () => {
           }
           throw error;
         }
+        
+        // Chiudiamo la modale e resettiamo lo stato di caricamento
         setIsAuthModalOpen(false);
+        setIsGeneratingAI(false);
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
@@ -198,10 +242,9 @@ const App: React.FC = () => {
     setIsGeneratingAI(true);
 
     try {
-      // 1. Genera un riassunto automatico tramite Gemini
-      const summary = await summarizeArticle(newContent);
+      // Inserimento nel DB (il sommario viene creato prendendo l'inizio del contenuto)
+      const summary = newContent.length > 200 ? newContent.substring(0, 197) + '...' : newContent;
       
-      // 2. Inserimento nel DB
       const { error } = await supabase.from('articles').insert({
         title: newTitle,
         content: newContent,
@@ -239,6 +282,26 @@ const App: React.FC = () => {
       alert("Link di verifica inviato nuovamente!");
     } catch (err: any) {
       setAuthError(err.message);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setArticleError('');
+    try {
+      const newBlob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+      setNewImageUrl(newBlob.url);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setArticleError('Errore durante l\'upload del file.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -290,7 +353,7 @@ const App: React.FC = () => {
                   ))
                 ) : (
                   <div className="py-20 text-center text-stone-400 newspaper-font italic text-xl">
-                    Nessun articolo trovato.
+                    Nessuna opinione trovata.
                   </div>
                 )}
               </div>
@@ -311,7 +374,7 @@ const App: React.FC = () => {
                         onClick={() => setIsNewArticleModalOpen(true)}
                         className="w-full mb-3 bg-red-600 text-white text-[10px] font-black py-3 uppercase rounded shadow hover:bg-red-700 transition-colors"
                       >
-                        Scrivi Articolo
+                        Nuovo
                       </button>
                     )}
 
@@ -415,13 +478,12 @@ const App: React.FC = () => {
       {isNewArticleModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
           <div className="bg-white p-8 md:p-12 max-w-2xl w-full border-t-[12px] border-red-600 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
-            <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">Nuovo Articolo</h2>
-            <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">Condividi la tua opinione con il mondo</p>
+            <p className="text-center text-[13.5px] text-stone-400 uppercase font-black mb-10 tracking-widest">Condividi la tua opinione con il mondo</p>
             
             <form onSubmit={handleCreateArticle} className="space-y-4">
               <input 
                 required 
-                placeholder="Titolo dell'articolo" 
+                placeholder="Titolo" 
                 className="w-full p-4 border-2 border-stone-100 rounded-lg text-lg font-bold newspaper-font" 
                 value={newTitle} 
                 onChange={e => setNewTitle(e.target.value)} 
@@ -438,23 +500,46 @@ const App: React.FC = () => {
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                <input 
-                  placeholder="URL Immagine Copertina" 
-                  className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
-                  value={newImageUrl} 
-                  onChange={e => setNewImageUrl(e.target.value)} 
-                />
+                <div className="space-y-2">
+                  <input 
+                    placeholder="URL Immagine Copertina" 
+                    className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
+                    value={newImageUrl} 
+                    onChange={e => setNewImageUrl(e.target.value)} 
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="flex-1 bg-stone-100 text-stone-600 py-2 px-4 rounded-lg text-xs font-bold hover:bg-stone-200 transition-colors disabled:opacity-50"
+                    >
+                      {isUploading ? 'Caricamento...' : 'Carica File'}
+                    </button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      accept="image/*,video/*"
+                    />
+                  </div>
+                </div>
               </div>
 
               {newImageUrl && (
-                <div className="w-full h-32 rounded-lg overflow-hidden border-2 border-stone-100">
-                  <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                <div className="w-full h-48 rounded-lg overflow-hidden border-2 border-stone-100 bg-stone-50">
+                  {newImageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
+                    <video src={newImageUrl} className="w-full h-full object-contain" controls />
+                  ) : (
+                    <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  )}
                 </div>
               )}
 
               <textarea 
                 required 
-                placeholder="Inizia a scrivere il tuo articolo qui... (Il sommario verrà generato automaticamente dall'IA)" 
+                placeholder="Scrivi qui..." 
                 className="w-full p-4 border-2 border-stone-100 rounded-lg text-sm font-serif min-h-[300px] resize-none" 
                 value={newContent} 
                 onChange={e => setNewContent(e.target.value)} 
@@ -475,7 +560,7 @@ const App: React.FC = () => {
                   type="submit" 
                   className="flex-[2] bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all shadow-lg"
                 >
-                  {isGeneratingAI ? 'GENERAZIONE RIASSUNTO E SALVATAGGIO...' : 'PUBBLICA ARTICOLO'}
+                  {isGeneratingAI ? 'SALVATAGGIO IN CORSO...' : 'PUBBLICA'}
                 </button>
               </div>
             </form>
@@ -496,7 +581,11 @@ const App: React.FC = () => {
                 <span>{new Date(selectedArticle.timestamp).toLocaleDateString('it-IT')}</span>
               </div>
             </div>
-            <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale rounded shadow-lg" alt="Cover" />
+            {selectedArticle.imageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
+              <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />
+            ) : (
+              <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale rounded shadow-lg" alt="Cover" />
+            )}
             <div className="prose prose-stone max-w-none text-stone-800 text-lg font-serif leading-relaxed">
               {selectedArticle.content.split('\n').map((p, i) => (
                 <p key={i} className="mb-6">{p}</p>

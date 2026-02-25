@@ -74,13 +74,22 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
         </p>
       </div>
 
-      {/* Image Container */}
+      {/* Media Container */}
       <div className="relative aspect-video bg-stone-100 overflow-hidden">
-        <img 
-          src={article.imageUrl} 
-          alt={article.title} 
-          className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-        />
+        {article.imageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
+          <video 
+            src={article.imageUrl} 
+            className="w-full h-full object-cover"
+            controls
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <img 
+            src={article.imageUrl} 
+            alt={article.title} 
+            className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+          />
+        )}
       </div>
 
       {/* Social Actions */}
