@@ -6,6 +6,7 @@ import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
 import { supabase } from './services/supabase';
 import { upload } from '@vercel/blob/client';
+import { getEmbedUrl } from './services/mediaUtils';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -37,7 +38,9 @@ const App: React.FC = () => {
   const [headerImage, setHeaderImage] = useState<string>('');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingHeader, setIsUploadingHeader] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const headerFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -61,7 +64,7 @@ const App: React.FC = () => {
     };
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (session?.user) {
         // Sincronizziamo il profilo in background senza bloccare la UI
         syncUserProfile(session.user);
@@ -143,7 +146,7 @@ const App: React.FC = () => {
 
       if (articlesRes.error) throw articlesRes.error;
 
-      const formattedArticles: Article[] = (articlesRes.data || []).map(a => ({
+      const formattedArticles: Article[] = (articlesRes.data || []).map((a: any) => ({
         id: a.id,
         title: a.title,
         summary: a.summary,
@@ -305,6 +308,33 @@ const App: React.FC = () => {
     }
   };
 
+  const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || user.role !== UserRole.ADMIN) return;
+
+    setIsUploadingHeader(true);
+    try {
+      const newBlob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      });
+      
+      const { error } = await supabase
+        .from('testata')
+        .update({ imma_testata: newBlob.url })
+        .eq('id', 'header_image');
+
+      if (error) throw error;
+      setHeaderImage(newBlob.url);
+      alert("Logo testata aggiornato con successo!");
+    } catch (error) {
+      console.error('Header upload error:', error);
+      alert("Errore durante l'aggiornamento del logo.");
+    } finally {
+      setIsUploadingHeader(false);
+    }
+  };
+
   const filteredArticles = selectedCategory === 'All' 
     ? articles 
     : articles.filter(a => a.category === selectedCategory);
@@ -329,9 +359,27 @@ const App: React.FC = () => {
         ) : (
           <>
             <aside className="lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6">
-              <div className="w-full">
+              <div className="w-full relative group">
                 {headerImage && (
                   <img src={headerImage} alt="Testata" className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm" />
+                )}
+                {user?.role === UserRole.ADMIN && (
+                  <div className="mt-2">
+                    <button 
+                      onClick={() => headerFileInputRef.current?.click()}
+                      disabled={isUploadingHeader}
+                      className="w-full bg-stone-100 text-stone-600 text-[9px] font-bold py-1 uppercase rounded hover:bg-stone-200 transition-colors border border-stone-200"
+                    >
+                      {isUploadingHeader ? 'Caricamento...' : 'Cambia Logo'}
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={headerFileInputRef} 
+                      onChange={handleHeaderUpload} 
+                      className="hidden" 
+                      accept="image/*" 
+                    />
+                  </div>
                 )}
               </div>
               <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-8">
@@ -502,7 +550,7 @@ const App: React.FC = () => {
                 </select>
                 <div className="space-y-2">
                   <input 
-                    placeholder="URL Immagine Copertina" 
+                    placeholder="URL Immagine, Video o Social (YouTube, IG, FB, TikTok)" 
                     className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
                     value={newImageUrl} 
                     onChange={e => setNewImageUrl(e.target.value)} 
@@ -524,16 +572,22 @@ const App: React.FC = () => {
                       accept="image/*,video/*"
                     />
                   </div>
+                  <p className="text-[9px] text-stone-400 italic">Puoi incollare un link social o caricare un file.</p>
                 </div>
               </div>
 
               {newImageUrl && (
                 <div className="w-full h-48 rounded-lg overflow-hidden border-2 border-stone-100 bg-stone-50">
-                  {newImageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
-                    <video src={newImageUrl} className="w-full h-full object-contain" controls />
-                  ) : (
-                    <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />
-                  )}
+                  {(() => {
+                    const embedUrl = getEmbedUrl(newImageUrl);
+                    if (embedUrl) {
+                      return <iframe src={embedUrl} className="w-full h-full border-0" allowFullScreen />;
+                    }
+                    if (newImageUrl.match(/\.(mp4|webm|ogg)$/i)) {
+                      return <video src={newImageUrl} className="w-full h-full object-contain" controls />;
+                    }
+                    return <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />;
+                  })()}
                 </div>
               )}
 
@@ -581,11 +635,16 @@ const App: React.FC = () => {
                 <span>{new Date(selectedArticle.timestamp).toLocaleDateString('it-IT')}</span>
               </div>
             </div>
-            {selectedArticle.imageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
-              <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />
-            ) : (
-              <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale rounded shadow-lg" alt="Cover" />
-            )}
+            {(() => {
+              const embedUrl = getEmbedUrl(selectedArticle.imageUrl);
+              if (embedUrl) {
+                return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen />;
+              }
+              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg)$/i)) {
+                return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
+              }
+              return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale rounded shadow-lg" alt="Cover" />;
+            })()}
             <div className="prose prose-stone max-w-none text-stone-800 text-lg font-serif leading-relaxed">
               {selectedArticle.content.split('\n').map((p, i) => (
                 <p key={i} className="mb-6">{p}</p>

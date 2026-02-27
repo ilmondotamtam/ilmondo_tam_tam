@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Article } from '../types';
+import { getEmbedUrl } from '../services/mediaUtils';
 
 interface ArticleCardProps {
   article: Article;
@@ -76,20 +77,37 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
 
       {/* Media Container */}
       <div className="relative aspect-video bg-stone-100 overflow-hidden">
-        {article.imageUrl.match(/\.(mp4|webm|ogg)$/i) ? (
-          <video 
-            src={article.imageUrl} 
-            className="w-full h-full object-cover"
-            controls
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <img 
-            src={article.imageUrl} 
-            alt={article.title} 
-            className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-          />
-        )}
+        {(() => {
+          const embedUrl = getEmbedUrl(article.imageUrl);
+          if (embedUrl) {
+            return (
+              <iframe 
+                src={embedUrl} 
+                className="w-full h-full border-0" 
+                allowFullScreen 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                onClick={(e) => e.stopPropagation()}
+              />
+            );
+          }
+          if (article.imageUrl.match(/\.(mp4|webm|ogg)$/i)) {
+            return (
+              <video 
+                src={article.imageUrl} 
+                className="w-full h-full object-cover"
+                controls
+                onClick={(e) => e.stopPropagation()}
+              />
+            );
+          }
+          return (
+            <img 
+              src={article.imageUrl} 
+              alt={article.title} 
+              className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+            />
+          );
+        })()}
       </div>
 
       {/* Social Actions */}
