@@ -40,6 +40,7 @@ const App: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingHeader, setIsUploadingHeader] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headerFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -238,6 +239,15 @@ const App: React.FC = () => {
     }
   };
 
+  const closeNewArticleModal = () => {
+    setNewTitle('');
+    setNewContent('');
+    setNewImageUrl('');
+    setSelectedFile(null);
+    setArticleError('');
+    setIsNewArticleModalOpen(false);
+  };
+
   const handleCreateArticle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN)) return;
@@ -246,6 +256,35 @@ const App: React.FC = () => {
     setIsGeneratingAI(true);
 
     try {
+      let finalImageUrl = newImageUrl;
+
+      // Se c'è un file selezionato, caricalo ora
+      if (selectedFile) {
+        setIsUploading(true);
+        setUploadProgress(0);
+        
+        // Genera un nome univoco: timestamp + stringa random + estensione originale
+        const fileExt = selectedFile.name.split('.').pop();
+        const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        
+        try {
+          const newBlob = await upload(uniqueName, selectedFile, {
+            access: 'public',
+            handleUploadUrl: '/api/upload',
+            clientPayload: JSON.stringify({ userId: user?.id }),
+            onUploadProgress: (progressEvent) => {
+              setUploadProgress(progressEvent.percentage);
+            }
+          });
+          finalImageUrl = newBlob.url;
+        } catch (uploadErr: any) {
+          throw new Error(`Errore durante l'upload del file: ${uploadErr.message}`);
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(0);
+        }
+      }
+
       // Inserimento nel DB (il sommario viene creato prendendo l'inizio del contenuto)
       const summary = newContent.length > 200 ? newContent.substring(0, 197) + '...' : newContent;
       
@@ -254,7 +293,7 @@ const App: React.FC = () => {
         content: newContent,
         summary: summary,
         category: newArticleCategory,
-        image_url: newImageUrl || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000',
+        image_url: finalImageUrl || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000',
         author_id: user.id,
         author_name: `${user.firstName} ${user.lastName}`
       });
@@ -262,10 +301,7 @@ const App: React.FC = () => {
       if (error) throw error;
 
       // Reset e chiusura
-      setNewTitle('');
-      setNewContent('');
-      setNewImageUrl('');
-      setIsNewArticleModalOpen(false);
+      closeNewArticleModal();
       await fetchData();
     } catch (err: any) {
       console.error("Article Creation Error:", err);
@@ -293,26 +329,11 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
-    setUploadProgress(0);
+    setSelectedFile(file);
+    // Creiamo un URL temporaneo per l'anteprima locale
+    const previewUrl = URL.createObjectURL(file);
+    setNewImageUrl(previewUrl);
     setArticleError('');
-    try {
-      const newBlob = await upload(file.name, file, {
-        access: 'public',
-        handleUploadUrl: '/api/upload',
-        clientPayload: JSON.stringify({ userId: user?.id }),
-        onUploadProgress: (progressEvent) => {
-          setUploadProgress(progressEvent.percentage);
-        }
-      });
-      setNewImageUrl(newBlob.url);
-    } catch (error) {
-      console.error('Upload error:', error);
-      setArticleError('Errore durante l\'upload del file. Riprova.');
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,9 +360,10 @@ const App: React.FC = () => {
       if (error) throw error;
       setHeaderImage(newBlob.url);
       alert("Logo testata aggiornato con successo!");
-    } catch (error) {
+    } catch (error: any) {
       console.error('Header upload error:', error);
-      alert("Errore durante l'aggiornamento del logo.");
+      const errorMsg = error.message || "Errore durante l'aggiornamento del logo.";
+      alert(errorMsg);
     } finally {
       setIsUploadingHeader(false);
       setUploadProgress(0);
@@ -573,10 +595,23 @@ const App: React.FC = () => {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploading}
-                      className="flex-1 bg-stone-100 text-stone-600 py-2 px-4 rounded-lg text-xs font-bold hover:bg-stone-200 transition-colors disabled:opacity-50"
+                      className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${selectedFile ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
                     >
-                      {isUploading ? `Caricamento ${uploadProgress}%` : 'Carica File'}
+                      {selectedFile ? `Selezionato: ${selectedFile.name.substring(0, 15)}${selectedFile.name.length > 15 ? '...' : ''}` : 'Carica File'}
                     </button>
+                    {selectedFile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFile(null);
+                          setNewImageUrl('');
+                        }}
+                        className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                        title="Rimuovi file"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      </button>
+                    )}
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -617,17 +652,17 @@ const App: React.FC = () => {
               <div className="flex gap-4">
                 <button 
                   type="button"
-                  onClick={() => setIsNewArticleModalOpen(false)}
+                  onClick={closeNewArticleModal}
                   className="flex-1 border-2 border-stone-100 text-stone-400 py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-50 transition-all"
                 >
                   Annulla
                 </button>
                 <button 
-                  disabled={isGeneratingAI} 
+                  disabled={isGeneratingAI || isUploading} 
                   type="submit" 
                   className="flex-[2] bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all shadow-lg"
                 >
-                  {isGeneratingAI ? 'SALVATAGGIO IN CORSO...' : 'PUBBLICA'}
+                  {isUploading ? `CARICAMENTO MEDIA ${uploadProgress}%` : (isGeneratingAI ? 'SALVATAGGIO IN CORSO...' : 'PUBBLICA')}
                 </button>
               </div>
             </form>

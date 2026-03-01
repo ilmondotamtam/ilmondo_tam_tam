@@ -9,6 +9,11 @@ app.use(express.json());
 app.post('/api/upload', async (req, res) => {
   const body = req.body as HandleUploadBody;
 
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.error('BLOB_READ_WRITE_TOKEN is missing on the server');
+    return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN is not configured on the server' });
+  }
+
   try {
     const jsonResponse = await handleUpload({
       body,
