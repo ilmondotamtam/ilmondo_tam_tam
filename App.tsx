@@ -39,6 +39,7 @@ const App: React.FC = () => {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingHeader, setIsUploadingHeader] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headerFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -293,18 +294,24 @@ const App: React.FC = () => {
     if (!file) return;
 
     setIsUploading(true);
+    setUploadProgress(0);
     setArticleError('');
     try {
       const newBlob = await upload(file.name, file, {
         access: 'public',
         handleUploadUrl: '/api/upload',
+        clientPayload: JSON.stringify({ userId: user?.id }),
+        onUploadProgress: (progressEvent) => {
+          setUploadProgress(progressEvent.percentage);
+        }
       });
       setNewImageUrl(newBlob.url);
     } catch (error) {
       console.error('Upload error:', error);
-      setArticleError('Errore durante l\'upload del file.');
+      setArticleError('Errore durante l\'upload del file. Riprova.');
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -313,10 +320,15 @@ const App: React.FC = () => {
     if (!file || !user || user.role !== UserRole.ADMIN) return;
 
     setIsUploadingHeader(true);
+    setUploadProgress(0);
     try {
       const newBlob = await upload(file.name, file, {
         access: 'public',
         handleUploadUrl: '/api/upload',
+        clientPayload: JSON.stringify({ userId: user?.id }),
+        onUploadProgress: (progressEvent) => {
+          setUploadProgress(progressEvent.percentage);
+        }
       });
       
       const { error } = await supabase
@@ -332,6 +344,7 @@ const App: React.FC = () => {
       alert("Errore durante l'aggiornamento del logo.");
     } finally {
       setIsUploadingHeader(false);
+      setUploadProgress(0);
     }
   };
 
@@ -370,7 +383,7 @@ const App: React.FC = () => {
                       disabled={isUploadingHeader}
                       className="w-full bg-stone-100 text-stone-600 text-[9px] font-bold py-1 uppercase rounded hover:bg-stone-200 transition-colors border border-stone-200"
                     >
-                      {isUploadingHeader ? 'Caricamento...' : 'Cambia Logo'}
+                      {isUploadingHeader ? `Caricamento ${uploadProgress}%` : 'Cambia Logo'}
                     </button>
                     <input 
                       type="file" 
@@ -562,7 +575,7 @@ const App: React.FC = () => {
                       disabled={isUploading}
                       className="flex-1 bg-stone-100 text-stone-600 py-2 px-4 rounded-lg text-xs font-bold hover:bg-stone-200 transition-colors disabled:opacity-50"
                     >
-                      {isUploading ? 'Caricamento...' : 'Carica File'}
+                      {isUploading ? `Caricamento ${uploadProgress}%` : 'Carica File'}
                     </button>
                     <input
                       type="file"
