@@ -401,7 +401,7 @@ const App: React.FC = () => {
           </div>
         ) : (
           <>
-            <aside className="lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6">
+            <aside className="lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6 order-1 lg:order-1">
               <div className="w-full relative group">
                 {headerImage && (
                   <img src={headerImage} alt="Testata" className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm" />
@@ -436,7 +436,7 @@ const App: React.FC = () => {
               </nav>
             </aside>
 
-            <div className="lg:col-span-6 space-y-6">
+            <div className="lg:col-span-6 space-y-6 order-3 lg:order-2">
               <div className="space-y-4">
                 {filteredArticles.length > 0 ? (
                   filteredArticles.map(article => (
@@ -450,7 +450,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <aside className="lg:col-span-3 space-y-8 lg:border-l border-stone-200 lg:pl-6 text-center">
+            <aside className="lg:col-span-3 space-y-8 lg:border-l border-stone-200 lg:pl-6 text-center order-2 lg:order-3">
               <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
                 <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">Il Tuo Profilo</h3>
                 {user ? (
