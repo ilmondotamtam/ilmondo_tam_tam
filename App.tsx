@@ -268,17 +268,21 @@ const App: React.FC = () => {
         const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
         
         try {
+          console.log("Starting upload for:", uniqueName);
           const newBlob = await upload(uniqueName, selectedFile, {
             access: 'public',
             handleUploadUrl: '/api/upload',
             clientPayload: JSON.stringify({ userId: user?.id }),
+            multipart: true,
             onUploadProgress: (progressEvent) => {
               setUploadProgress(progressEvent.percentage);
             }
           });
+          console.log("Upload successful:", newBlob.url);
           finalImageUrl = newBlob.url;
         } catch (uploadErr: any) {
-          throw new Error(`Errore durante l'upload del file: ${uploadErr.message}`);
+          console.error("Upload error details:", uploadErr);
+          throw new Error(`Errore durante l'upload del file: ${uploadErr.message || 'Errore sconosciuto'}`);
         } finally {
           setIsUploading(false);
           setUploadProgress(0);
@@ -343,10 +347,14 @@ const App: React.FC = () => {
     setIsUploadingHeader(true);
     setUploadProgress(0);
     try {
-      const newBlob = await upload(file.name, file, {
+      const fileExt = file.name.split('.').pop();
+      const uniqueName = `header-${Date.now()}.${fileExt}`;
+      
+      const newBlob = await upload(uniqueName, file, {
         access: 'public',
         handleUploadUrl: '/api/upload',
         clientPayload: JSON.stringify({ userId: user?.id }),
+        multipart: true,
         onUploadProgress: (progressEvent) => {
           setUploadProgress(progressEvent.percentage);
         }
@@ -631,7 +639,7 @@ const App: React.FC = () => {
                     if (embedUrl) {
                       return <iframe src={embedUrl} className="w-full h-full border-0" allowFullScreen />;
                     }
-                    if (newImageUrl.match(/\.(mp4|webm|ogg)$/i)) {
+                    if (newImageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i) || (selectedFile && selectedFile.type.startsWith('video/'))) {
                       return <video src={newImageUrl} className="w-full h-full object-contain" controls />;
                     }
                     return <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />;

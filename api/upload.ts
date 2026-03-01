@@ -1,12 +1,11 @@
-import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const app = express();
-app.use(express.json());
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-// Endpoint per gestire l'upload di Vercel Blob
-app.post('/api/upload', async (req, res) => {
   const body = req.body as HandleUploadBody;
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
@@ -48,39 +47,9 @@ app.post('/api/upload', async (req, res) => {
       },
     });
 
-    res.status(200).json(jsonResponse);
+    return res.status(200).json(jsonResponse);
   } catch (error) {
     console.error('Blob upload error:', error);
-    res.status(400).json({ error: (error as Error).message });
-  }
-});
-
-async function startServer() {
-  const PORT = 3000;
-
-  // Vite middleware per lo sviluppo
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static('dist'));
-    app.get('*', (req, res) => {
-      res.sendFile('index.html', { root: 'dist' });
-    });
-  }
-
-  // Avviamo il server solo se non siamo in un ambiente serverless (come Vercel Functions)
-  // o se siamo in locale
-  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
+    return res.status(400).json({ error: (error as Error).message });
   }
 }
-
-startServer();
-
-export default app;

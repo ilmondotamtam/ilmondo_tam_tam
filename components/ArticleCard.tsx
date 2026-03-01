@@ -90,7 +90,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
               />
             );
           }
-          if (article.imageUrl.match(/\.(mp4|webm|ogg)$/i)) {
+          if (article.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
             return (
               <video 
                 src={article.imageUrl} 
