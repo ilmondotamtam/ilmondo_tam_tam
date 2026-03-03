@@ -79,6 +79,32 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Risoluzione automatica link brevi TikTok
+  useEffect(() => {
+    if (!newImageUrl) return;
+    
+    const isShortTikTok = newImageUrl.includes('tiktok.com') && 
+      (newImageUrl.includes('/t/') || newImageUrl.includes('vt.tiktok.com') || newImageUrl.includes('vm.tiktok.com'));
+    
+    if (isShortTikTok) {
+      const resolveTikTok = async () => {
+        try {
+          const res = await fetch(`/api/resolve-tiktok?url=${encodeURIComponent(newImageUrl)}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.resolvedUrl && data.resolvedUrl !== newImageUrl) {
+            setNewImageUrl(data.resolvedUrl);
+          }
+        } catch (err) {
+          console.error("TikTok resolution failed", err);
+        }
+      };
+      
+      const timer = setTimeout(resolveTikTok, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [newImageUrl]);
+
   const checkSession = async () => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();

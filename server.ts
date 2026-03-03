@@ -5,6 +5,29 @@ import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 const app = express();
 app.use(express.json());
 
+// Endpoint per risolvere i link brevi di TikTok (vt.tiktok.com, vm.tiktok.com)
+app.get('/api/resolve-tiktok', async (req, res) => {
+  const { url } = req.query;
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  try {
+    // Usiamo fetch (disponibile in Node 18+) per seguire i redirect
+    const response = await fetch(url, { 
+      method: 'GET', 
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    res.json({ resolvedUrl: response.url });
+  } catch (error) {
+    console.error('TikTok resolve error:', error);
+    res.status(500).json({ error: 'Failed to resolve URL' });
+  }
+});
+
 // Endpoint per gestire l'upload di Vercel Blob
 app.post('/api/upload', async (req, res) => {
   const body = req.body as HandleUploadBody;

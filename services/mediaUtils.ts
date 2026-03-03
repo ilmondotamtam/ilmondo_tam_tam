@@ -11,7 +11,7 @@ export const getEmbedUrl = (url: string) => {
   if (igMatch) return `https://www.instagram.com/p/${igMatch[1]}/embed`;
 
   // TikTok
-  const ttMatch = url.match(/(?:https?:\/\/)?(?:www\.)?tiktok\.com\/(?:@[\w.-]+\/video\/|v\/)(\d+)/);
+  const ttMatch = url.match(/tiktok\.com\/(?:@[\w.-]+\/video\/|v\/|embed\/v2\/|embed\/)(\d+)/);
   if (ttMatch) return `https://www.tiktok.com/embed/v2/${ttMatch[1]}`;
 
   // Facebook
