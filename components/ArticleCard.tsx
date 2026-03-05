@@ -6,19 +6,16 @@ import { getEmbedUrl } from '../services/mediaUtils';
 interface ArticleCardProps {
   article: Article;
   onClick: (article: Article) => void;
-  onLike?: (newLikes: number) => void;
+  onLike?: () => void;
+  currentUserId?: string;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLike }) => {
-  const [liked, setLiked] = useState(false);
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLike, currentUserId }) => {
+  const liked = currentUserId ? article.likedBy?.includes(currentUserId) : false;
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const isNewLike = !liked;
-    setLiked(isNewLike);
-    const currentLikes = article.likes || 0;
-    const newLikes = isNewLike ? currentLikes + 1 : Math.max(0, currentLikes - 1);
-    if (onLike) onLike(newLikes);
+    if (onLike) onLike();
   };
 
   const handleShare = (e: React.MouseEvent) => {
@@ -76,25 +73,36 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
       </div>
 
       {/* Media Container */}
-      <div className="relative aspect-video bg-stone-100 overflow-hidden">
+      <div className="relative bg-stone-100 overflow-hidden">
         {(() => {
           const embedUrl = getEmbedUrl(article.imageUrl);
           if (embedUrl) {
+            const isTikTok = article.imageUrl.includes('tiktok.com');
+            const isInstagram = article.imageUrl.includes('instagram.com');
+            const isFacebook = article.imageUrl.includes('facebook.com');
+            
+            let containerClass = "aspect-video";
+            if (isTikTok) containerClass = "aspect-[9/16] max-h-[600px] mx-auto";
+            else if (isInstagram) containerClass = "aspect-[1/1.25] max-h-[650px] mx-auto";
+            else if (isFacebook) containerClass = "aspect-[4/3] max-h-[500px] mx-auto";
+
             return (
-              <iframe 
-                src={embedUrl} 
-                className="w-full h-full border-0" 
-                allowFullScreen 
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                onClick={(e) => e.stopPropagation()}
-              />
+              <div className={containerClass}>
+                <iframe 
+                  src={embedUrl} 
+                  className="w-full h-full border-0" 
+                  allowFullScreen 
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
             );
           }
           if (article.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
             return (
               <video 
                 src={article.imageUrl} 
-                className="w-full h-full object-cover"
+                className="w-full h-auto max-h-[70vh] block mx-auto"
                 controls
                 onClick={(e) => e.stopPropagation()}
               />
@@ -104,7 +112,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
             <img 
               src={article.imageUrl} 
               alt={article.title} 
-              className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+              className="w-full h-auto block transition-transform duration-500 hover:scale-[1.02]"
             />
           );
         })()}

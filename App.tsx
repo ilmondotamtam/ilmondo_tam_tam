@@ -159,11 +159,11 @@ const App: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      // Carichiamo articoli e immagine di testata in parallelo
+      // Carichiamo articoli, immagine di testata e apprezzamenti in parallelo
       const [articlesRes, testataRes] = await Promise.all([
         supabase
           .from('articles')
-          .select('*, comments(*)')
+          .select('*, comments(*), apprezzamenti(user_id)')
           .order('created_at', { ascending: false }),
         supabase
           .from('testata')
@@ -184,6 +184,7 @@ const App: React.FC = () => {
         category: a.category as Category,
         imageUrl: a.image_url,
         likes: a.likes || 0,
+        likedBy: (a.apprezzamenti || []).map((l: any) => l.user_id),
         timestamp: new Date(a.created_at).getTime(),
         comments: (a.comments || []).map((c: any) => ({
           id: c.id,
@@ -201,6 +202,111 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error("Fetch Error:", error);
+    }
+  };
+
+  const handleLike = async (articleId: string) => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const article = articles.find(a => a.id === articleId);
+    if (!article) return;
+
+    const isLiked = article.likedBy?.includes(user.id);
+
+    try {
+      if (isLiked) {
+        // Rimuovi mi piace
+        const { error } = await supabase
+          .from('apprezzamenti')
+          .delete()
+          .eq('article_id', articleId)
+          .eq('user_id', user.id);
+        
+        if (error) throw error;
+
+        // Decrementa il contatore nell'articolo
+        await supabase.rpc('decrement_likes', { row_id: articleId });
+      } else {
+        // Aggiungi mi piace
+        const { error } = await supabase
+          .from('apprezzamenti')
+          .insert({ article_id: articleId, user_id: user.id });
+        
+        if (error) throw error;
+
+        // Incrementa il contatore nell'articolo
+        await supabase.rpc('increment_likes', { row_id: articleId });
+      }
+
+      // Ricarica i dati per aggiornare la UI
+      await fetchData();
+    } catch (err) {
+      console.error("Like Error:", err);
+    }
+  };
+
+  const handleAddComment = async (articleId: string, content: string) => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .insert({
+          article_id: articleId,
+          user_id: user.id,
+          username: `${user.firstName} ${user.lastName}`,
+          content: content
+        });
+
+      if (error) throw error;
+      
+      // Ricarica i dati per mostrare il nuovo commento
+      await fetchData();
+      
+      // Se l'articolo è aperto nella modale, aggiorniamo anche quello stato locale
+      if (selectedArticle && selectedArticle.id === articleId) {
+        // fetchData aggiorna la lista articles, ma selectedArticle è un oggetto separato nello stato
+        // Possiamo rinfrescarlo cercando l'articolo aggiornato nella lista
+        const updatedArticles = await supabase
+          .from('articles')
+          .select('*, comments(*), apprezzamenti(user_id)')
+          .eq('id', articleId)
+          .single();
+        
+        if (updatedArticles.data) {
+          const a = updatedArticles.data;
+          setSelectedArticle({
+            id: a.id,
+            title: a.title,
+            summary: a.summary,
+            content: a.content,
+            authorId: a.author_id,
+            authorName: a.author_name,
+            category: a.category as Category,
+            imageUrl: a.image_url,
+            likes: a.likes || 0,
+            likedBy: (a.apprezzamenti || []).map((l: any) => l.user_id),
+            timestamp: new Date(a.created_at).getTime(),
+            comments: (a.comments || []).map((c: any) => ({
+              id: c.id,
+              articleId: c.article_id,
+              userId: c.user_id,
+              username: c.username,
+              content: c.content,
+              timestamp: new Date(c.created_at).getTime()
+            })).sort((a: any, b: any) => b.timestamp - a.timestamp)
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Comment Error:", err);
+      alert("Errore durante l'invio del commento.");
     }
   };
 
@@ -466,7 +572,13 @@ const App: React.FC = () => {
               <div className="space-y-4">
                 {filteredArticles.length > 0 ? (
                   filteredArticles.map(article => (
-                    <ArticleCard key={article.id} article={article} onClick={setSelectedArticle} />
+                    <ArticleCard 
+                      key={article.id} 
+                      article={article} 
+                      onClick={setSelectedArticle} 
+                      onLike={() => handleLike(article.id)}
+                      currentUserId={user?.id}
+                    />
                   ))
                 ) : (
                   <div className="py-20 text-center text-stone-400 newspaper-font italic text-xl">
@@ -659,16 +771,29 @@ const App: React.FC = () => {
               </div>
 
               {newImageUrl && (
-                <div className="w-full h-48 rounded-lg overflow-hidden border-2 border-stone-100 bg-stone-50">
+                <div className="w-full max-h-80 rounded-lg overflow-hidden border-2 border-stone-100 bg-stone-50 flex items-center justify-center">
                   {(() => {
                     const embedUrl = getEmbedUrl(newImageUrl);
                     if (embedUrl) {
-                      return <iframe src={embedUrl} className="w-full h-full border-0" allowFullScreen />;
+                      const isTikTok = newImageUrl.includes('tiktok.com');
+                      const isInstagram = newImageUrl.includes('instagram.com');
+                      const isFacebook = newImageUrl.includes('facebook.com');
+                      
+                      let previewClass = "aspect-video w-full";
+                      if (isTikTok) previewClass = "aspect-[9/16] h-80";
+                      else if (isInstagram) previewClass = "aspect-[1/1.25] h-80";
+                      else if (isFacebook) previewClass = "aspect-[4/3] w-full";
+
+                      return (
+                        <div className={previewClass}>
+                          <iframe src={embedUrl} className="w-full h-full border-0" allowFullScreen />
+                        </div>
+                      );
                     }
                     if (newImageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i) || (selectedFile && selectedFile.type.startsWith('video/'))) {
-                      return <video src={newImageUrl} className="w-full h-full object-contain" controls />;
+                      return <video src={newImageUrl} className="w-full max-h-80 object-contain" controls />;
                     }
-                    return <img src={newImageUrl} alt="Preview" className="w-full h-full object-cover" />;
+                    return <img src={newImageUrl} alt="Preview" className="w-full max-h-80 object-contain" />;
                   })()}
                 </div>
               )}
@@ -732,7 +857,11 @@ const App: React.FC = () => {
                 <p key={i} className="mb-6">{p}</p>
               ))}
             </div>
-            <CommentSection comments={selectedArticle.comments} currentUser={user} onAddComment={() => fetchData()} />
+            <CommentSection 
+              comments={selectedArticle.comments} 
+              currentUser={user} 
+              onAddComment={(content) => handleAddComment(selectedArticle.id, content)} 
+            />
           </div>
         </div>
       )}

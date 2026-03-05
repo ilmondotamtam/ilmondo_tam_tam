@@ -37,6 +37,7 @@ export interface Article {
   timestamp: number;
   comments: Comment[];
   likes?: number;
+  likedBy?: string[];
 }
 
 export type Category = 

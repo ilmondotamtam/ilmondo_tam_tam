@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS public.comments (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- RLS per Commenti
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Commenti visibili a tutti" ON public.comments FOR SELECT USING (true);
+CREATE POLICY "Utenti autenticati possono commentare" ON public.comments FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Utenti possono eliminare i propri commenti" ON public.comments FOR DELETE USING (auth.uid() = user_id);
+
 -- 9. Tabella Testata
 CREATE TABLE IF NOT EXISTS public.testata (
     id TEXT PRIMARY KEY,
@@ -105,3 +111,37 @@ CREATE TABLE IF NOT EXISTS public.testata (
 INSERT INTO public.testata (id, imma_testata) 
 VALUES ('header_image', 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?q=80&w=2070&auto=format&fit=crop')
 ON CONFLICT (id) DO NOTHING;
+
+-- 10. Tabella Apprezzamenti (Likes)
+CREATE TABLE IF NOT EXISTS public.apprezzamenti (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    article_id UUID REFERENCES public.articles(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.utenti(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(article_id, user_id)
+);
+
+-- RLS per Apprezzamenti
+ALTER TABLE public.apprezzamenti ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Apprezzamenti visibili a tutti" ON public.apprezzamenti FOR SELECT USING (true);
+CREATE POLICY "Utenti possono mettere mi piace" ON public.apprezzamenti FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Utenti possono togliere mi piace" ON public.apprezzamenti FOR DELETE USING (auth.uid() = user_id);
+
+-- 11. Funzioni per incrementare/decrementare i likes
+CREATE OR REPLACE FUNCTION increment_likes(row_id UUID)
+RETURNS void AS $$
+BEGIN
+  UPDATE public.articles
+  SET likes = COALESCE(likes, 0) + 1
+  WHERE id = row_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION decrement_likes(row_id UUID)
+RETURNS void AS $$
+BEGIN
+  UPDATE public.articles
+  SET likes = GREATEST(0, COALESCE(likes, 0) - 1)
+  WHERE id = row_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
