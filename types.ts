@@ -40,6 +40,26 @@ export interface Article {
   likedBy?: string[];
 }
 
+export enum ContattoStatus {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED'
+}
+
+export interface Contatto {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  status: ContattoStatus;
+  createdAt: number;
+  updatedAt: number;
+  // Extended info for UI
+  senderName?: string;
+  senderAvatar?: string;
+  receiverName?: string;
+  receiverAvatar?: string;
+}
+
 export type Category = 
   | 'Opinioni' 
   | 'Fatti' 

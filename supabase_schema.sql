@@ -145,3 +145,29 @@ BEGIN
   WHERE id = row_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 12. Tabella Contatti (Amicizie)
+CREATE TABLE IF NOT EXISTS public.contatti (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sender_id UUID REFERENCES public.utenti(id) ON DELETE CASCADE,
+    receiver_id UUID REFERENCES public.utenti(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED')),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(sender_id, receiver_id)
+);
+
+-- RLS per Contatti
+ALTER TABLE public.contatti ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Utenti possono vedere i propri contatti" ON public.contatti 
+FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY "Utenti possono inviare richieste" ON public.contatti 
+FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Utenti possono aggiornare le richieste ricevute o inviate" ON public.contatti 
+FOR UPDATE USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY "Utenti possono eliminare i propri contatti" ON public.contatti 
+FOR DELETE USING (auth.uid() = sender_id OR auth.uid() = receiver_id);

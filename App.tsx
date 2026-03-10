@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { User, Article, UserRole, Category, Comment } from './types';
+import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus } from './types';
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
@@ -43,6 +43,23 @@ const App: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headerFileInputRef = useRef<HTMLInputElement>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Form State Profile
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileFirstName, setProfileFirstName] = useState('');
+  const [profileLastName, setProfileLastName] = useState('');
+  const [profileBirthDate, setProfileBirthDate] = useState('');
+  const [profileUsername, setProfileUsername] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState('');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  // Form State Contacts
+  const [contacts, setContacts] = useState<Contatto[]>([]);
+  const [isContactsModalOpen, setIsContactsModalOpen] = useState(false);
+  const [searchUserQuery, setSearchUserQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -73,11 +90,25 @@ const App: React.FC = () => {
         setIsAuthModalOpen(false);
       } else {
         setUser(null);
+        setContacts([]);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchContacts();
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    // Re-sort articles when contacts change
+    if (articles.length > 0) {
+      sortArticles(articles);
+    }
+  }, [contacts]);
 
   // Risoluzione automatica link brevi TikTok
   useEffect(() => {
@@ -195,13 +226,151 @@ const App: React.FC = () => {
           timestamp: new Date(c.created_at).getTime()
         })).sort((a: any, b: any) => b.timestamp - a.timestamp)
       }));
-      setArticles(formattedArticles);
+      
+      sortArticles(formattedArticles);
 
       if (testataRes.data) {
         setHeaderImage(testataRes.data.imma_testata);
       }
     } catch (error: any) {
       console.error("Fetch Error:", error);
+    }
+  };
+
+  const sortArticles = (articlesList: Article[]) => {
+    const sorted = [...articlesList];
+    
+    if (user && contacts.length > 0) {
+      const acceptedContactIds = contacts
+        .filter(c => c.status === ContattoStatus.ACCEPTED)
+        .map(c => c.senderId === user.id ? c.receiverId : c.senderId);
+
+      sorted.sort((a, b) => {
+        const aIsContact = acceptedContactIds.includes(a.authorId);
+        const bIsContact = acceptedContactIds.includes(b.authorId);
+        
+        if (aIsContact && !bIsContact) return -1;
+        if (!aIsContact && bIsContact) return 1;
+        return b.timestamp - a.timestamp;
+      });
+    } else {
+      sorted.sort((a, b) => b.timestamp - a.timestamp);
+    }
+    
+    setArticles(sorted);
+  };
+
+  const fetchContacts = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('contatti')
+        .select(`
+          *,
+          sender:utenti!sender_id(username, avatar, first_name, last_name),
+          receiver:utenti!receiver_id(username, avatar, first_name, last_name)
+        `)
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+      if (error) throw error;
+
+      const formattedContacts: Contatto[] = (data || []).map((c: any) => ({
+        id: c.id,
+        senderId: c.sender_id,
+        receiverId: c.receiver_id,
+        status: c.status as ContattoStatus,
+        createdAt: new Date(c.created_at).getTime(),
+        updatedAt: new Date(c.updated_at).getTime(),
+        senderName: `${c.sender.first_name} ${c.sender.last_name}`,
+        senderAvatar: c.sender.avatar,
+        receiverName: `${c.receiver.first_name} ${c.receiver.last_name}`,
+        receiverAvatar: c.receiver.avatar
+      }));
+
+      setContacts(formattedContacts);
+    } catch (err) {
+      console.error("Fetch Contacts Error:", err);
+    }
+  };
+
+  const handleSendContactRequest = async (receiverId: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('contatti')
+        .insert({
+          sender_id: user.id,
+          receiver_id: receiverId,
+          status: ContattoStatus.PENDING
+        });
+
+      if (error) throw error;
+      await fetchContacts();
+      alert('Richiesta di contatto inviata!');
+    } catch (err: any) {
+      console.error("Send Contact Request Error:", err);
+      alert(err.message || "Errore durante l'invio della richiesta.");
+    }
+  };
+
+  const handleUpdateContactStatus = async (contactId: string, status: ContattoStatus) => {
+    try {
+      const { error } = await supabase
+        .from('contatti')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', contactId);
+
+      if (error) throw error;
+      await fetchContacts();
+    } catch (err: any) {
+      console.error("Update Contact Status Error:", err);
+      alert(err.message || "Errore durante l'aggiornamento della richiesta.");
+    }
+  };
+
+  const handleRemoveContact = async (contactId: string) => {
+    if (!confirm('Sei sicuro di voler rimuovere questo contatto?')) return;
+    try {
+      const { error } = await supabase
+        .from('contatti')
+        .delete()
+        .eq('id', contactId);
+
+      if (error) throw error;
+      await fetchContacts();
+    } catch (err: any) {
+      console.error("Remove Contact Error:", err);
+      alert(err.message || "Errore durante la rimozione del contatto.");
+    }
+  };
+
+  const handleSearchUsers = async () => {
+    if (!searchUserQuery.trim()) return;
+    setIsSearchingUsers(true);
+    try {
+      const { data, error } = await supabase
+        .from('utenti')
+        .select('*')
+        .or(`username.ilike.%${searchUserQuery}%,first_name.ilike.%${searchUserQuery}%,last_name.ilike.%${searchUserQuery}%`)
+        .neq('id', user?.id)
+        .limit(10);
+
+      if (error) throw error;
+      
+      setSearchResults((data || []).map((u: any) => ({
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        role: u.role as UserRole,
+        avatar: u.avatar,
+        firstName: u.first_name,
+        lastName: u.last_name,
+        birthDate: u.birth_date
+      })));
+    } catch (err) {
+      console.error("Search Users Error:", err);
+    } finally {
+      setIsSearchingUsers(false);
     }
   };
 
@@ -368,6 +537,84 @@ const App: React.FC = () => {
         : err.message || 'Errore durante l\'operazione');
     } finally {
       setIsGeneratingAI(false);
+    }
+  };
+
+  const openProfileModal = () => {
+    if (!user) return;
+    setProfileFirstName(user.firstName || '');
+    setProfileLastName(user.lastName || '');
+    setProfileBirthDate(user.birthDate || '');
+    setProfileUsername(user.username || '');
+    setProfileAvatar(user.avatar || '');
+    setIsProfileModalOpen(true);
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsUpdatingProfile(true);
+    try {
+      const { error } = await supabase
+        .from('utenti')
+        .update({
+          first_name: profileFirstName,
+          last_name: profileLastName,
+          birth_date: profileBirthDate,
+          username: profileUsername,
+          avatar: profileAvatar
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      
+      // Update local state
+      setUser({
+        ...user,
+        firstName: profileFirstName,
+        lastName: profileLastName,
+        birthDate: profileBirthDate,
+        username: profileUsername,
+        avatar: profileAvatar
+      });
+      
+      setIsProfileModalOpen(false);
+      alert('Profilo aggiornato con successo!');
+    } catch (err: any) {
+      console.error("Profile Update Error:", err);
+      alert(err.message || "Errore durante l'aggiornamento del profilo.");
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const uniqueName = `avatar-${user.id}-${Date.now()}.${fileExt}`;
+      
+      const newBlob = await upload(uniqueName, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+        clientPayload: JSON.stringify({ userId: user?.id }),
+        multipart: true,
+        onUploadProgress: (progressEvent) => {
+          setUploadProgress(progressEvent.percentage);
+        }
+      });
+      
+      setProfileAvatar(newBlob.url);
+    } catch (error: any) {
+      console.error('Avatar upload error:', error);
+      alert(error.message || "Errore durante l'upload dell'avatar.");
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -593,10 +840,23 @@ const App: React.FC = () => {
                 <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">Il Tuo Profilo</h3>
                 {user ? (
                   <>
-                    <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-4 mx-auto grayscale" alt="Profile" />
-                    <h4 className="text-lg font-bold newspaper-font mb-1">{user.firstName} {user.lastName}</h4>
+                    <div 
+                      className="cursor-pointer group mb-4" 
+                      onClick={openProfileModal}
+                      title="Modifica Profilo"
+                    >
+                      <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-2 mx-auto transition-all" alt="Profile" />
+                      <h4 className="text-lg font-bold newspaper-font mb-1 group-hover:text-red-600 transition-colors">{user.firstName} {user.lastName}</h4>
+                    </div>
                     <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6">{user.role}</span>
                     
+                    <button 
+                      onClick={() => setIsContactsModalOpen(true)}
+                      className="w-full mb-3 bg-stone-100 text-stone-800 text-[10px] font-black py-3 uppercase rounded shadow hover:bg-stone-200 transition-colors border border-stone-200"
+                    >
+                      Contatti ({contacts.filter(c => c.status === ContattoStatus.ACCEPTED).length})
+                    </button>
+
                     {/* Pulsante Inserimento Articolo per AUTHOR e ADMIN */}
                     {(user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN) && (
                       <button 
@@ -829,6 +1089,254 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Modal Contatti */}
+      {isContactsModalOpen && user && (
+        <div className="fixed inset-0 z-[110] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
+          <div className="bg-white p-8 md:p-12 max-w-2xl w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <h2 className="text-3xl font-bold newspaper-font mb-2 uppercase tracking-tighter">I Tuoi Contatti</h2>
+                <p className="text-[9px] text-stone-400 uppercase font-black tracking-widest">Gestisci le tue connessioni</p>
+              </div>
+              <button onClick={() => setIsContactsModalOpen(false)} className="text-2xl hover:text-red-600 transition-colors">✕</button>
+            </div>
+
+            {/* Ricerca Utenti */}
+            <div className="mb-10">
+              <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest">Cerca nuovi contatti</h3>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  placeholder="Cerca per nome o username..." 
+                  className="flex-1 p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors"
+                  value={searchUserQuery}
+                  onChange={(e) => setSearchUserQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearchUsers()}
+                />
+                <button 
+                  onClick={handleSearchUsers}
+                  disabled={isSearchingUsers}
+                  className="bg-stone-800 text-white px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-stone-700 transition-colors disabled:opacity-50"
+                >
+                  {isSearchingUsers ? '...' : 'Cerca'}
+                </button>
+              </div>
+
+              {searchResults.length > 0 && (
+                <div className="mt-4 space-y-3 bg-stone-50 p-4 rounded-xl border border-stone-100">
+                  {searchResults.map(result => {
+                    const existingContact = contacts.find(c => c.senderId === result.id || c.receiverId === result.id);
+                    return (
+                      <div key={result.id} className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-stone-100">
+                        <div className="flex items-center gap-3">
+                          <img src={result.avatar} className="w-10 h-10 rounded-full border border-stone-200" alt={result.username} />
+                          <div>
+                            <p className="text-sm font-bold">{result.firstName} {result.lastName}</p>
+                            <p className="text-[10px] text-stone-400 uppercase font-bold">@{result.username}</p>
+                          </div>
+                        </div>
+                        {existingContact ? (
+                          <span className="text-[10px] font-black uppercase text-stone-400 tracking-widest">
+                            {existingContact.status === ContattoStatus.PENDING ? 'Richiesta Inviata' : 'Già nei contatti'}
+                          </span>
+                        ) : (
+                          <button 
+                            onClick={() => handleSendContactRequest(result.id)}
+                            className="bg-red-600 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors"
+                          >
+                            Aggiungi
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Richieste Pendenti */}
+            {contacts.some(c => c.status === ContattoStatus.PENDING && c.receiverId === user.id) && (
+              <div className="mb-10">
+                <h3 className="text-xs font-black uppercase text-red-600 mb-4 tracking-widest">Richieste in sospeso</h3>
+                <div className="space-y-3">
+                  {contacts.filter(c => c.status === ContattoStatus.PENDING && c.receiverId === user.id).map(request => (
+                    <div key={request.id} className="flex items-center justify-between bg-red-50 p-4 rounded-xl border border-red-100">
+                      <div className="flex items-center gap-3">
+                        <img src={request.senderAvatar} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" alt={request.senderName} />
+                        <div>
+                          <p className="text-sm font-bold">{request.senderName}</p>
+                          <p className="text-[10px] text-stone-400 uppercase font-bold">Ti ha inviato una richiesta</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleUpdateContactStatus(request.id, ContattoStatus.REJECTED)}
+                          className="bg-white text-stone-400 p-2 rounded-lg hover:text-red-600 transition-colors shadow-sm"
+                        >
+                          Rifiuta
+                        </button>
+                        <button 
+                          onClick={() => handleUpdateContactStatus(request.id, ContattoStatus.ACCEPTED)}
+                          className="bg-stone-800 text-white px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-stone-700 transition-colors shadow-sm"
+                        >
+                          Accetta
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Lista Contatti */}
+            <div>
+              <h3 className="text-xs font-black uppercase text-stone-400 mb-4 tracking-widest">I tuoi contatti ({contacts.filter(c => c.status === ContattoStatus.ACCEPTED).length})</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {contacts.filter(c => c.status === ContattoStatus.ACCEPTED).map(contact => {
+                  const isSender = contact.senderId === user.id;
+                  const contactName = isSender ? contact.receiverName : contact.senderName;
+                  const contactAvatar = isSender ? contact.receiverAvatar : contact.senderAvatar;
+                  
+                  return (
+                    <div key={contact.id} className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-100">
+                      <div className="flex items-center gap-3">
+                        <img src={contactAvatar} className="w-10 h-10 rounded-full border border-stone-200" alt={contactName} />
+                        <p className="text-sm font-bold">{contactName}</p>
+                      </div>
+                      <button 
+                        onClick={() => handleRemoveContact(contact.id)}
+                        className="text-stone-300 hover:text-red-600 transition-colors p-1"
+                        title="Rimuovi Contatto"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  );
+                })}
+                {contacts.filter(c => c.status === ContattoStatus.ACCEPTED).length === 0 && (
+                  <p className="col-span-2 text-center py-8 text-stone-400 italic text-sm">Non hai ancora nessun contatto. Usa la ricerca sopra per trovarne!</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Profilo */}
+      {isProfileModalOpen && user && (
+        <div className="fixed inset-0 z-[110] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
+          <div className="bg-white p-8 md:p-12 max-w-md w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">Il Tuo Profilo</h2>
+            <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-8 tracking-widest">Gestisci i tuoi dati personali</p>
+            
+            <form onSubmit={handleUpdateProfile} className="space-y-6">
+              <div className="flex flex-col items-center mb-6">
+                <div className="relative group">
+                  <img 
+                    src={profileAvatar} 
+                    className="w-32 h-32 rounded-full border-4 border-stone-800 object-cover transition-all" 
+                    alt="Avatar" 
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => avatarFileInputRef.current?.click()}
+                    className="absolute bottom-0 right-0 bg-stone-800 text-white p-2 rounded-full shadow-lg hover:bg-stone-700 transition-colors"
+                    title="Cambia Immagine"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  </button>
+                  <input 
+                    type="file" 
+                    ref={avatarFileInputRef} 
+                    onChange={handleAvatarUpload} 
+                    className="hidden" 
+                    accept="image/*" 
+                  />
+                </div>
+                {isUploading && (
+                  <div className="w-full mt-2">
+                    <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-stone-800 transition-all" style={{ width: `${uploadProgress}%` }}></div>
+                    </div>
+                    <p className="text-[10px] text-center mt-1 text-stone-500 uppercase font-bold">Caricamento {uploadProgress}%</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Email (Non modificabile)</label>
+                  <input 
+                    disabled 
+                    className="w-full p-3 bg-stone-50 border-2 border-stone-100 rounded-lg text-sm text-stone-400 cursor-not-allowed" 
+                    value={user.email} 
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Nome</label>
+                    <input 
+                      required 
+                      className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                      value={profileFirstName} 
+                      onChange={e => setProfileFirstName(e.target.value)} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Cognome</label>
+                    <input 
+                      required 
+                      className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                      value={profileLastName} 
+                      onChange={e => setProfileLastName(e.target.value)} 
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Username</label>
+                  <input 
+                    required 
+                    className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                    value={profileUsername} 
+                    onChange={e => setProfileUsername(e.target.value)} 
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Data di Nascita</label>
+                  <input 
+                    required 
+                    type="date" 
+                    className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                    value={profileBirthDate} 
+                    onChange={e => setProfileBirthDate(e.target.value)} 
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="flex-1 border-2 border-stone-100 text-stone-400 py-3 font-black uppercase tracking-widest text-[10px] rounded-lg hover:bg-stone-50 transition-all"
+                >
+                  Annulla
+                </button>
+                <button 
+                  disabled={isUpdatingProfile || isUploading} 
+                  type="submit" 
+                  className="flex-[2] bg-stone-900 text-white py-3 font-black uppercase tracking-widest text-[10px] rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all shadow-lg"
+                >
+                  {isUpdatingProfile ? 'SALVATAGGIO...' : 'SALVA MODIFICHE'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Articolo Selezionato */}
       {selectedArticle && (
         <div className="fixed inset-0 z-50 bg-black/90 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
@@ -850,7 +1358,7 @@ const App: React.FC = () => {
               if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg)$/i)) {
                 return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
               }
-              return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 grayscale rounded shadow-lg" alt="Cover" />;
+              return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" alt="Cover" />;
             })()}
             <div className="prose prose-stone max-w-none text-stone-800 text-lg font-serif leading-relaxed">
               {selectedArticle.content.split('\n').map((p, i) => (
