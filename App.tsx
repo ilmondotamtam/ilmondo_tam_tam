@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'PRIORITY' | 'CHRONOLOGICAL'>('PRIORITY');
 
   // Form State Auth
   const [authEmail, setAuthEmail] = useState('');
@@ -104,11 +105,11 @@ const App: React.FC = () => {
   }, [user?.id]);
 
   useEffect(() => {
-    // Re-sort articles when contacts change
+    // Re-sort articles when contacts or viewMode change
     if (articles.length > 0) {
       sortArticles(articles);
     }
-  }, [contacts]);
+  }, [contacts, viewMode]);
 
   // Risoluzione automatica link brevi TikTok
   useEffect(() => {
@@ -240,7 +241,7 @@ const App: React.FC = () => {
   const sortArticles = (articlesList: Article[]) => {
     const sorted = [...articlesList];
     
-    if (user && contacts.length > 0) {
+    if (user && viewMode === 'PRIORITY' && contacts.length > 0) {
       const acceptedContactIds = contacts
         .filter(c => c.status === ContattoStatus.ACCEPTED)
         .map(c => c.senderId === user.id ? c.receiverId : c.senderId);
@@ -804,13 +805,36 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-              <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-8">
+              <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-4">
                 {new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
+
+              {user && (
+                <div className="mb-6 bg-stone-100 p-2 rounded-lg border border-stone-200">
+                  <p className="text-[10px] uppercase font-bold text-stone-500 mb-2 px-1">Modalità di Visione</p>
+                  <div className="flex flex-col gap-1">
+                    <button 
+                      onClick={() => setViewMode('PRIORITY')}
+                      className={`text-[11px] font-bold py-2 px-3 rounded transition-all text-left flex items-center justify-between ${viewMode === 'PRIORITY' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}
+                    >
+                      I miei contatti
+                      {viewMode === 'PRIORITY' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>}
+                    </button>
+                    <button 
+                      onClick={() => setViewMode('CHRONOLOGICAL')}
+                      className={`text-[11px] font-bold py-2 px-3 rounded transition-all text-left flex items-center justify-between ${viewMode === 'CHRONOLOGICAL' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}
+                    >
+                      Visualizza tutti
+                      {viewMode === 'CHRONOLOGICAL' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <nav className="flex flex-col space-y-1">
-                <button onClick={() => setSelectedCategory('All')} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
+                <button onClick={() => setSelectedCategory('All')} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
                 {CATEGORIES.map(cat => (
-                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={navStyles} className={`text-left py-3 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
                 ))}
               </nav>
             </aside>

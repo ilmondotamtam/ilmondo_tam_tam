@@ -64,7 +64,8 @@ export type Category =
   | 'Opinioni' 
   | 'Fatti' 
   | 'Tradizioni e eventi' 
+  | 'CIBI E BEVANDE'
+  | 'SPORT'
   | 'Curiosità' 
-  | 'Città' 
-  | 'Foto e video' 
+  | 'Città e paesi' 
   | 'Oggi parliamo di...';
