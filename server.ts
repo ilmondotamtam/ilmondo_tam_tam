@@ -1,9 +1,21 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const app = express();
 app.use(express.json());
+
+// Configurazione S3 per Supabase
+const s3Client = new S3Client({
+  forcePathStyle: true,
+  region: process.env.SUPABASE_S3_REGION || 'us-east-1',
+  endpoint: process.env.SUPABASE_S3_ENDPOINT || 'https://rsedmdahrhxmrlrkizmp.supabase.co/storage/v1/s3',
+  credentials: {
+    accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || '',
+  },
+});
 
 // Endpoint per risolvere i link brevi di TikTok (vt.tiktok.com, vm.tiktok.com)
 app.get('/api/resolve-tiktok', async (req, res) => {
@@ -28,53 +40,37 @@ app.get('/api/resolve-tiktok', async (req, res) => {
   }
 });
 
-// Endpoint per gestire l'upload di Vercel Blob
-app.post('/api/upload', async (req, res) => {
-  const body = req.body as HandleUploadBody;
+// Endpoint per generare un URL pre-firmato S3 per l'upload
+app.post('/api/upload/presign', async (req, res) => {
+  const { fileName, contentType } = req.body;
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.error('BLOB_READ_WRITE_TOKEN is missing on the server');
-    return res.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN is not configured on the server' });
+  if (!fileName || !contentType) {
+    return res.status(400).json({ error: 'fileName and contentType are required' });
+  }
+
+  if (!process.env.SUPABASE_S3_ACCESS_KEY_ID || !process.env.SUPABASE_S3_SECRET_ACCESS_KEY) {
+    console.error('S3 credentials are missing on the server');
+    return res.status(500).json({ error: 'S3 credentials are not configured on the server' });
   }
 
   try {
-    const jsonResponse = await handleUpload({
-      body,
-      request: req,
-      onBeforeGenerateToken: async (pathname, clientPayload) => {
-        const payload = clientPayload ? JSON.parse(clientPayload) : {};
-        
-        return {
-          allowedContentTypes: [
-            'image/jpeg', 
-            'image/png', 
-            'image/gif', 
-            'image/webp', 
-            'image/avif',
-            'video/mp4', 
-            'video/quicktime', 
-            'video/webm',
-            'video/ogg',
-            'video/x-matroska',
-            'video/avi',
-            'video/mpeg'
-          ],
-          maximumSizeInBytes: 100 * 1024 * 1024, // 100MB
-          tokenPayload: JSON.stringify({
-            userId: payload.userId,
-            uploadDate: new Date().toISOString(),
-          }),
-        };
-      },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        console.log('Upload completed:', blob, tokenPayload);
-      },
+    const bucketName = process.env.SUPABASE_S3_BUCKET || 'media';
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: fileName,
+      ContentType: contentType,
     });
 
-    res.status(200).json(jsonResponse);
+    // Genera l'URL pre-firmato valido per 60 secondi
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
+    
+    // Costruiamo l'URL pubblico finale
+    const publicUrl = `${process.env.SUPABASE_S3_ENDPOINT?.replace('/s3', '')}/object/public/${bucketName}/${fileName}`;
+
+    res.json({ signedUrl, publicUrl });
   } catch (error) {
-    console.error('Blob upload error:', error);
-    res.status(400).json({ error: (error as Error).message });
+    console.error('S3 presign error:', error);
+    res.status(500).json({ error: 'Failed to generate signed URL' });
   }
 });
 

@@ -5,7 +5,6 @@ import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
 import { supabase } from './services/supabase';
-import { upload } from '@vercel/blob/client';
 import { getEmbedUrl } from './services/mediaUtils';
 
 const App: React.FC = () => {
@@ -147,6 +146,49 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Session Check Error:", err);
     }
+  };
+
+  const uploadToS3 = async (file: File, fileName: string) => {
+    // 1. Ottieni l'URL pre-firmato dal server
+    const presignRes = await fetch('/api/upload/presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName, contentType: file.type })
+    });
+
+    if (!presignRes.ok) {
+      const errData = await presignRes.json();
+      throw new Error(errData.error || 'Errore durante la generazione del link di upload');
+    }
+
+    const { signedUrl, publicUrl } = await presignRes.json();
+
+    // 2. Esegui l'upload diretto su S3 usando l'URL pre-firmato
+    const uploadRes = await fetch(signedUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type }
+    });
+
+    if (!uploadRes.ok) {
+      const errorText = await uploadRes.text();
+      console.error('S3 Upload Error Details:', {
+        status: uploadRes.status,
+        statusText: uploadRes.statusText,
+        body: errorText
+      });
+      
+      let friendlyError = `Errore S3 (${uploadRes.status}): ${uploadRes.statusText}`;
+      if (uploadRes.status === 403) {
+        friendlyError = "Accesso negato (403). Verifica le credenziali S3 e le impostazioni CORS del bucket su Supabase.";
+      } else if (uploadRes.status === 404) {
+        friendlyError = "Bucket non trovato (404). Assicurati che il bucket 'media' esista su Supabase.";
+      }
+      
+      throw new Error(friendlyError);
+    }
+
+    return publicUrl;
   };
 
   const syncUserProfile = async (authUser: any) => {
@@ -599,17 +641,9 @@ const App: React.FC = () => {
       const fileExt = file.name.split('.').pop();
       const uniqueName = `avatar-${user.id}-${Date.now()}.${fileExt}`;
       
-      const newBlob = await upload(uniqueName, file, {
-        access: 'public',
-        handleUploadUrl: '/api/upload',
-        clientPayload: JSON.stringify({ userId: user?.id }),
-        multipart: true,
-        onUploadProgress: (progressEvent) => {
-          setUploadProgress(progressEvent.percentage);
-        }
-      });
+      const publicUrl = await uploadToS3(file, uniqueName);
       
-      setProfileAvatar(newBlob.url);
+      setProfileAvatar(publicUrl);
     } catch (error: any) {
       console.error('Avatar upload error:', error);
       alert(error.message || "Errore durante l'upload dell'avatar.");
@@ -649,17 +683,9 @@ const App: React.FC = () => {
         
         try {
           console.log("Starting upload for:", uniqueName);
-          const newBlob = await upload(uniqueName, selectedFile, {
-            access: 'public',
-            handleUploadUrl: '/api/upload',
-            clientPayload: JSON.stringify({ userId: user?.id }),
-            multipart: true,
-            onUploadProgress: (progressEvent) => {
-              setUploadProgress(progressEvent.percentage);
-            }
-          });
-          console.log("Upload successful:", newBlob.url);
-          finalImageUrl = newBlob.url;
+          const publicUrl = await uploadToS3(selectedFile, uniqueName);
+          console.log("Upload successful:", publicUrl);
+          finalImageUrl = publicUrl;
         } catch (uploadErr: any) {
           console.error("Upload error details:", uploadErr);
           throw new Error(`Errore durante l'upload del file: ${uploadErr.message || 'Errore sconosciuto'}`);
@@ -730,23 +756,15 @@ const App: React.FC = () => {
       const fileExt = file.name.split('.').pop();
       const uniqueName = `header-${Date.now()}.${fileExt}`;
       
-      const newBlob = await upload(uniqueName, file, {
-        access: 'public',
-        handleUploadUrl: '/api/upload',
-        clientPayload: JSON.stringify({ userId: user?.id }),
-        multipart: true,
-        onUploadProgress: (progressEvent) => {
-          setUploadProgress(progressEvent.percentage);
-        }
-      });
+      const publicUrl = await uploadToS3(file, uniqueName);
       
       const { error } = await supabase
         .from('testata')
-        .update({ imma_testata: newBlob.url })
+        .update({ imma_testata: publicUrl })
         .eq('id', 'header_image');
 
       if (error) throw error;
-      setHeaderImage(newBlob.url);
+      setHeaderImage(publicUrl);
       alert("Logo testata aggiornato con successo!");
     } catch (error: any) {
       console.error('Header upload error:', error);

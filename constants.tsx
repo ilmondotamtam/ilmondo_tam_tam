@@ -5,8 +5,8 @@ export const CATEGORIES: Category[] = [
   'Opinioni', 
   'Fatti', 
   'Tradizioni e eventi', 
-  'CIBI E BEVANDE',
-  'SPORT',
+  'Cibi e bevande',
+  'Sport',
   'Curiosità', 
   'Città e paesi', 
   'Oggi parliamo di...'
