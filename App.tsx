@@ -169,7 +169,7 @@ const App: React.FC = () => {
       let errorMsg = 'Errore durante la generazione del link di upload';
       try {
         const errData = JSON.parse(errorText);
-        errorMsg = errData.error || errorMsg;
+        errorMsg = errData.details || errData.error || errorMsg;
       } catch (e) {
         errorMsg = `${errorMsg} (${presignRes.status}): ${errorText.substring(0, 100)}`;
       }
