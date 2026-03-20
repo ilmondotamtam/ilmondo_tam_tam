@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.utenti (
     last_name TEXT,
     birth_date DATE,
     email TEXT NOT NULL UNIQUE,
-    role TEXT NOT NULL DEFAULT 'READER',
+    role TEXT NOT NULL DEFAULT 'AUTHOR',
     avatar TEXT,
     privacy_accepted BOOLEAN DEFAULT FALSE,
     contract_accepted BOOLEAN DEFAULT FALSE,

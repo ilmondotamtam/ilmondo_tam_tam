@@ -229,7 +229,7 @@ const App: React.FC = () => {
           id: authUser.id,
           username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'utente',
           email: authUser.email || '',
-          role: UserRole.READER,
+          role: UserRole.AUTHOR,
           avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${authUser.id}`,
           firstName: authUser.user_metadata?.first_name || '',
           lastName: authUser.user_metadata?.last_name || '',
