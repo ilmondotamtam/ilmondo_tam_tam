@@ -28,23 +28,57 @@ CREATE POLICY "Utenti possono aggiornare il proprio profilo" ON public.utenti FO
 -- 5. FUNZIONE TRIGGER: Questa funzione crea il profilo automaticamente
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  base_username TEXT;
+  final_username TEXT;
+  counter INTEGER := 0;
 BEGIN
+  -- Estrai l'username dai metadati o usa la parte prima della @ dell'email
+  base_username := COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1));
+  final_username := base_username;
+
+  -- Gestione dell'unicità dell'username
+  WHILE EXISTS (SELECT 1 FROM public.utenti WHERE username = final_username) LOOP
+    counter := counter + 1;
+    final_username := base_username || counter::text;
+  END LOOP;
+
   INSERT INTO public.utenti (
-    id, username, first_name, last_name, birth_date, email, avatar, 
-    privacy_accepted, contract_accepted, role
+    id, 
+    username, 
+    first_name, 
+    last_name, 
+    birth_date, 
+    email, 
+    avatar, 
+    privacy_accepted, 
+    contract_accepted, 
+    role
   )
   VALUES (
     new.id,
-    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
+    final_username,
     new.raw_user_meta_data->>'first_name',
     new.raw_user_meta_data->>'last_name',
     NULLIF(new.raw_user_meta_data->>'birth_date', '')::date,
     new.email,
-    'https://api.dicebear.com/7.x/miniavs/svg?seed=' || COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
+    'https://api.dicebear.com/7.x/miniavs/svg?seed=' || final_username,
     COALESCE((new.raw_user_meta_data->>'privacy_accepted')::boolean, FALSE),
     COALESCE((new.raw_user_meta_data->>'contract_accepted')::boolean, FALSE),
     'AUTHOR'
-  );
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    username = EXCLUDED.username,
+    first_name = EXCLUDED.first_name,
+    last_name = EXCLUDED.last_name,
+    birth_date = EXCLUDED.birth_date,
+    email = EXCLUDED.email,
+    role = EXCLUDED.role;
+
+  RETURN new;
+EXCEPTION WHEN OTHERS THEN
+  -- Log dell'errore (visibile nei log di Supabase)
+  RAISE WARNING 'Errore in handle_new_user per l''utente %: %', new.id, SQLERRM;
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

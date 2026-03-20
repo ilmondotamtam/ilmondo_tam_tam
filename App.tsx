@@ -123,7 +123,14 @@ const App: React.FC = () => {
         try {
           const res = await fetch(`/api/resolve-tiktok?url=${encodeURIComponent(newImageUrl)}`);
           if (!res.ok) return;
-          const data = await res.json();
+          const responseText = await res.text();
+          let data;
+          try {
+            data = JSON.parse(responseText);
+          } catch (e) {
+            console.error("Failed to parse TikTok resolution response as JSON:", responseText);
+            return;
+          }
           if (data.resolvedUrl && data.resolvedUrl !== newImageUrl) {
             setNewImageUrl(data.resolvedUrl);
           }
@@ -158,11 +165,27 @@ const App: React.FC = () => {
     });
 
     if (!presignRes.ok) {
-      const errData = await presignRes.json();
-      throw new Error(errData.error || 'Errore durante la generazione del link di upload');
+      const errorText = await presignRes.text();
+      let errorMsg = 'Errore durante la generazione del link di upload';
+      try {
+        const errData = JSON.parse(errorText);
+        errorMsg = errData.error || errorMsg;
+      } catch (e) {
+        errorMsg = `${errorMsg} (${presignRes.status}): ${errorText.substring(0, 100)}`;
+      }
+      throw new Error(errorMsg);
     }
 
-    const { signedUrl, publicUrl } = await presignRes.json();
+    const responseText = await presignRes.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error("Failed to parse presign response as JSON:", responseText);
+      throw new Error("Il server ha restituito una risposta non valida (non JSON).");
+    }
+    
+    const { signedUrl, publicUrl } = data;
 
     // 2. Esegui l'upload diretto su S3 usando l'URL pre-firmato
     const uploadRes = await fetch(signedUrl, {
@@ -548,7 +571,7 @@ const App: React.FC = () => {
     try {
       if (authMode === 'REGISTER') {
         const username = `${firstName}_${lastName}`.toLowerCase().replace(/\s/g, '');
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: authEmail,
           password: authPassword,
           options: {
@@ -563,7 +586,9 @@ const App: React.FC = () => {
           }
         });
 
-        if (error) throw error;
+        if (signUpError) throw signUpError;
+        
+        // Se la registrazione ha successo, mostriamo la modale di verifica
         setAuthMode('VERIFY');
       } else if (authMode === 'LOGIN') {
         const { error } = await supabase.auth.signInWithPassword({
