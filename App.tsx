@@ -720,22 +720,20 @@ const App: React.FC = () => {
     try {
       let finalImageUrl = newImageUrl;
 
-      // Se c'è un file selezionato, caricalo ora
+      // Se c'è ancora un file selezionato (non ancora caricato), caricalo ora
+      // (Normalmente handleFileUpload carica subito, ma per sicurezza lasciamo questo controllo)
       if (selectedFile) {
         setIsUploading(true);
         setUploadProgress(0);
         
-        // Genera un nome univoco: timestamp + stringa random + estensione originale
         const fileExt = selectedFile.name.split('.').pop();
         const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
         
         try {
-          console.log("Starting upload for:", uniqueName);
           const publicUrl = await uploadToS3(selectedFile, uniqueName);
-          console.log("Upload successful:", publicUrl);
           finalImageUrl = publicUrl;
+          setNewImageUrl(publicUrl);
         } catch (uploadErr: any) {
-          console.error("Upload error details:", uploadErr);
           throw new Error(`Errore durante l'upload del file: ${uploadErr.message || 'Errore sconosciuto'}`);
         } finally {
           setIsUploading(false);
@@ -743,7 +741,7 @@ const App: React.FC = () => {
         }
       }
 
-      // Inserimento nel DB (il sommario viene creato prendendo l'inizio del contenuto)
+      // Inserimento nel DB
       const summary = newContent.length > 200 ? newContent.substring(0, 197) + '...' : newContent;
       
       const { error } = await supabase.from('articles').insert({
@@ -787,11 +785,31 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setSelectedFile(file);
-    // Creiamo un URL temporaneo per l'anteprima locale
+    // Mostriamo l'anteprima locale immediatamente
     const previewUrl = URL.createObjectURL(file);
     setNewImageUrl(previewUrl);
+    setSelectedFile(file);
     setArticleError('');
+
+    // Avviamo l'upload immediatamente per generare il link Supabase
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+      
+      const publicUrl = await uploadToS3(file, uniqueName);
+      setNewImageUrl(publicUrl);
+      setSelectedFile(null); // Upload completato, non serve più il file originale
+    } catch (err: any) {
+      console.error("Upload error during selection:", err);
+      setArticleError(`Errore durante l'upload: ${err.message}`);
+      // Manteniamo il file selezionato così handleCreateArticle può riprovare l'upload se necessario
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

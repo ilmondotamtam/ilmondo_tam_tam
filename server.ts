@@ -80,7 +80,23 @@ app.post('/api/upload/presign', async (req, res) => {
     const signedUrl = await getSignedUrl(client, command, { expiresIn: 60 });
     
     // Costruiamo l'URL pubblico finale in modo robusto
-    const baseUrl = S3_ENDPOINT.replace(/\/s3\/?$/, '');
+    // Il formato standard di Supabase è: https://[ref].supabase.co/storage/v1/object/public/[bucket]/[file]
+    // Se è definita SUPABASE_URL, la usiamo come base preferita
+    let baseUrl = process.env.SUPABASE_URL;
+    
+    if (baseUrl) {
+      baseUrl = baseUrl.replace(/\/$/, ''); // Rimuovi eventuale slash finale
+      if (!baseUrl.includes('/storage/v1')) {
+        baseUrl += '/storage/v1';
+      }
+    } else {
+      // Altrimenti deriviamo dall'endpoint S3
+      baseUrl = S3_ENDPOINT.replace(/\/s3\/?$/, '');
+      if (!baseUrl.includes('/storage/v1')) {
+        baseUrl = baseUrl.replace(/\/$/, '') + '/storage/v1';
+      }
+    }
+    
     const publicUrl = `${baseUrl}/object/public/${bucketName}/${fileName}`;
 
     res.json({ signedUrl, publicUrl });
