@@ -1,21 +1,33 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 // Configurazione S3 per Supabase
-const s3Client = new S3Client({
-  forcePathStyle: true,
-  region: process.env.SUPABASE_S3_REGION || 'us-east-1',
-  endpoint: process.env.SUPABASE_S3_ENDPOINT || 'https://rsedmdahrhxmrlrkizmp.supabase.co/storage/v1/s3',
-  credentials: {
-    accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || '',
-  },
-});
+const DEFAULT_S3_ENDPOINT = 'https://rsedmdahrhxmrlrkizmp.supabase.co/storage/v1/s3';
+
+let s3Client: S3Client | null = null;
+
+function getS3Client() {
+  if (!s3Client) {
+    const S3_ENDPOINT = process.env.SUPABASE_S3_ENDPOINT || DEFAULT_S3_ENDPOINT;
+    s3Client = new S3Client({
+      forcePathStyle: true,
+      region: process.env.SUPABASE_S3_REGION || 'us-east-1',
+      endpoint: S3_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || '',
+        secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || '',
+      },
+    });
+  }
+  return s3Client;
+}
 
 // Endpoint per risolvere i link brevi di TikTok (vt.tiktok.com, vm.tiktok.com)
 app.get('/api/resolve-tiktok', async (req, res) => {
@@ -50,11 +62,14 @@ app.post('/api/upload/presign', async (req, res) => {
 
   if (!process.env.SUPABASE_S3_ACCESS_KEY_ID || !process.env.SUPABASE_S3_SECRET_ACCESS_KEY) {
     console.error('S3 credentials are missing on the server');
-    return res.status(500).json({ error: 'S3 credentials are not configured on the server' });
+    return res.status(500).json({ error: 'S3 credentials are not configured on the server. Please add SUPABASE_S3_ACCESS_KEY_ID and SUPABASE_S3_SECRET_ACCESS_KEY to your secrets.' });
   }
 
   try {
     const bucketName = process.env.SUPABASE_S3_BUCKET || 'media';
+    const S3_ENDPOINT = process.env.SUPABASE_S3_ENDPOINT || DEFAULT_S3_ENDPOINT;
+    const client = getS3Client();
+    
     const command = new PutObjectCommand({
       Bucket: bucketName,
       Key: fileName,
@@ -62,15 +77,35 @@ app.post('/api/upload/presign', async (req, res) => {
     });
 
     // Genera l'URL pre-firmato valido per 60 secondi
-    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
+    const signedUrl = await getSignedUrl(client, command, { expiresIn: 60 });
     
-    // Costruiamo l'URL pubblico finale
-    const publicUrl = `${process.env.SUPABASE_S3_ENDPOINT?.replace('/s3', '')}/object/public/${bucketName}/${fileName}`;
+    // Costruiamo l'URL pubblico finale in modo robusto
+    // Il formato standard di Supabase è: https://[ref].supabase.co/storage/v1/object/public/[bucket]/[file]
+    // Se è definita SUPABASE_URL, la usiamo come base preferita
+    let baseUrl = process.env.SUPABASE_URL;
+    
+    if (baseUrl) {
+      baseUrl = baseUrl.replace(/\/$/, ''); // Rimuovi eventuale slash finale
+      if (!baseUrl.includes('/storage/v1')) {
+        baseUrl += '/storage/v1';
+      }
+    } else {
+      // Altrimenti deriviamo dall'endpoint S3
+      baseUrl = S3_ENDPOINT.replace(/\/s3\/?$/, '');
+      if (!baseUrl.includes('/storage/v1')) {
+        baseUrl = baseUrl.replace(/\/$/, '') + '/storage/v1';
+      }
+    }
+    
+    const publicUrl = `${baseUrl}/object/public/${bucketName}/${fileName}`;
 
     res.json({ signedUrl, publicUrl });
-  } catch (error) {
+  } catch (error: any) {
     console.error('S3 presign error:', error);
-    res.status(500).json({ error: 'Failed to generate signed URL' });
+    res.status(500).json({ 
+      error: 'Failed to generate signed URL', 
+      details: error?.message || String(error) 
+    });
   }
 });
 

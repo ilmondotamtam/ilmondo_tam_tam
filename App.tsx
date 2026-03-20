@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ClipboardPaste } from 'lucide-react';
 import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus } from './types';
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
@@ -122,7 +123,14 @@ const App: React.FC = () => {
         try {
           const res = await fetch(`/api/resolve-tiktok?url=${encodeURIComponent(newImageUrl)}`);
           if (!res.ok) return;
-          const data = await res.json();
+          const responseText = await res.text();
+          let data;
+          try {
+            data = JSON.parse(responseText);
+          } catch (e) {
+            console.error("Failed to parse TikTok resolution response as JSON:", responseText);
+            return;
+          }
           if (data.resolvedUrl && data.resolvedUrl !== newImageUrl) {
             setNewImageUrl(data.resolvedUrl);
           }
@@ -148,7 +156,7 @@ const App: React.FC = () => {
     }
   };
 
-  const uploadToS3 = async (file: File, fileName: string) => {
+  const uploadToS3 = async (file: File, fileName: string): Promise<string> => {
     // 1. Ottieni l'URL pre-firmato dal server
     const presignRes = await fetch('/api/upload/presign', {
       method: 'POST',
@@ -157,38 +165,76 @@ const App: React.FC = () => {
     });
 
     if (!presignRes.ok) {
-      const errData = await presignRes.json();
-      throw new Error(errData.error || 'Errore durante la generazione del link di upload');
-    }
-
-    const { signedUrl, publicUrl } = await presignRes.json();
-
-    // 2. Esegui l'upload diretto su S3 usando l'URL pre-firmato
-    const uploadRes = await fetch(signedUrl, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type }
-    });
-
-    if (!uploadRes.ok) {
-      const errorText = await uploadRes.text();
-      console.error('S3 Upload Error Details:', {
-        status: uploadRes.status,
-        statusText: uploadRes.statusText,
-        body: errorText
-      });
-      
-      let friendlyError = `Errore S3 (${uploadRes.status}): ${uploadRes.statusText}`;
-      if (uploadRes.status === 403) {
-        friendlyError = "Accesso negato (403). Verifica le credenziali S3 e le impostazioni CORS del bucket su Supabase.";
-      } else if (uploadRes.status === 404) {
-        friendlyError = "Bucket non trovato (404). Assicurati che il bucket 'media' esista su Supabase.";
+      const errorText = await presignRes.text();
+      let errorMsg = 'Errore durante la generazione del link di upload';
+      try {
+        const errData = JSON.parse(errorText);
+        errorMsg = errData.details || errData.error || errorMsg;
+      } catch (e) {
+        errorMsg = `${errorMsg} (${presignRes.status}): ${errorText.substring(0, 100)}`;
       }
-      
-      throw new Error(friendlyError);
+      throw new Error(errorMsg);
     }
 
-    return publicUrl;
+    const responseText = await presignRes.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error("Failed to parse presign response as JSON:", responseText);
+      throw new Error("Il server ha restituito una risposta non valida (non JSON).");
+    }
+    
+    const { signedUrl, publicUrl } = data;
+
+    // 2. Esegui l'upload diretto su S3 usando XMLHttpRequest per il tracking del progresso
+    return new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percentComplete);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(publicUrl);
+        } else {
+          console.error('S3 Upload Error Details:', {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            body: xhr.responseText
+          });
+          
+          let friendlyError = `Errore S3 (${xhr.status}): ${xhr.statusText}`;
+          if (xhr.status === 403) {
+            friendlyError = "Accesso negato (403). Verifica le credenziali S3 e le impostazioni CORS del bucket su Supabase.";
+          } else if (xhr.status === 404) {
+            friendlyError = "Bucket non trovato (404). Assicurati che il bucket 'media' esista su Supabase.";
+          }
+          reject(new Error(friendlyError));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error("Errore di rete durante l'upload su S3."));
+      });
+
+      xhr.open('PUT', signedUrl);
+      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.send(file);
+    });
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setNewImageUrl(text);
+    } catch (err) {
+      console.error('Failed to read clipboard contents: ', err);
+    }
   };
 
   const syncUserProfile = async (authUser: any) => {
@@ -219,7 +265,7 @@ const App: React.FC = () => {
           id: authUser.id,
           username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'utente',
           email: authUser.email || '',
-          role: UserRole.READER,
+          role: UserRole.AUTHOR,
           avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${authUser.id}`,
           firstName: authUser.user_metadata?.first_name || '',
           lastName: authUser.user_metadata?.last_name || '',
@@ -538,7 +584,7 @@ const App: React.FC = () => {
     try {
       if (authMode === 'REGISTER') {
         const username = `${firstName}_${lastName}`.toLowerCase().replace(/\s/g, '');
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: authEmail,
           password: authPassword,
           options: {
@@ -553,7 +599,9 @@ const App: React.FC = () => {
           }
         });
 
-        if (error) throw error;
+        if (signUpError) throw signUpError;
+        
+        // Se la registrazione ha successo, mostriamo la modale di verifica
         setAuthMode('VERIFY');
       } else if (authMode === 'LOGIN') {
         const { error } = await supabase.auth.signInWithPassword({
@@ -672,22 +720,20 @@ const App: React.FC = () => {
     try {
       let finalImageUrl = newImageUrl;
 
-      // Se c'è un file selezionato, caricalo ora
+      // Se c'è ancora un file selezionato (non ancora caricato), caricalo ora
+      // (Normalmente handleFileUpload carica subito, ma per sicurezza lasciamo questo controllo)
       if (selectedFile) {
         setIsUploading(true);
         setUploadProgress(0);
         
-        // Genera un nome univoco: timestamp + stringa random + estensione originale
         const fileExt = selectedFile.name.split('.').pop();
         const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
         
         try {
-          console.log("Starting upload for:", uniqueName);
           const publicUrl = await uploadToS3(selectedFile, uniqueName);
-          console.log("Upload successful:", publicUrl);
           finalImageUrl = publicUrl;
+          setNewImageUrl(publicUrl);
         } catch (uploadErr: any) {
-          console.error("Upload error details:", uploadErr);
           throw new Error(`Errore durante l'upload del file: ${uploadErr.message || 'Errore sconosciuto'}`);
         } finally {
           setIsUploading(false);
@@ -695,7 +741,7 @@ const App: React.FC = () => {
         }
       }
 
-      // Inserimento nel DB (il sommario viene creato prendendo l'inizio del contenuto)
+      // Inserimento nel DB
       const summary = newContent.length > 200 ? newContent.substring(0, 197) + '...' : newContent;
       
       const { error } = await supabase.from('articles').insert({
@@ -739,11 +785,31 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setSelectedFile(file);
-    // Creiamo un URL temporaneo per l'anteprima locale
+    // Mostriamo l'anteprima locale immediatamente
     const previewUrl = URL.createObjectURL(file);
     setNewImageUrl(previewUrl);
+    setSelectedFile(file);
     setArticleError('');
+
+    // Avviamo l'upload immediatamente per generare il link Supabase
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+      
+      const publicUrl = await uploadToS3(file, uniqueName);
+      setNewImageUrl(publicUrl);
+      setSelectedFile(null); // Upload completato, non serve più il file originale
+    } catch (err: any) {
+      console.error("Upload error during selection:", err);
+      setArticleError(`Errore durante l'upload: ${err.message}`);
+      // Manteniamo il file selezionato così handleCreateArticle può riprovare l'upload se necessario
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1032,12 +1098,22 @@ const App: React.FC = () => {
                   ))}
                 </select>
                 <div className="space-y-2">
-                  <input 
-                    placeholder="URL Immagine, Video o Social (YouTube, IG, FB, TikTok)" 
-                    className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
-                    value={newImageUrl} 
-                    onChange={e => setNewImageUrl(e.target.value)} 
-                  />
+                  <div className="relative flex items-center">
+                    <input 
+                      placeholder="URL Immagine, Video o Social (YouTube, IG, FB, TikTok)" 
+                      className="w-full p-3 pr-12 border-2 border-stone-100 rounded-lg text-sm" 
+                      value={newImageUrl} 
+                      onChange={e => setNewImageUrl(e.target.value)} 
+                    />
+                    <button
+                      type="button"
+                      onClick={handlePaste}
+                      className="absolute right-2 p-2 text-stone-400 hover:text-stone-800 transition-colors"
+                      title="Incolla dagli appunti"
+                    >
+                      <ClipboardPaste size={18} />
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1397,7 +1473,7 @@ const App: React.FC = () => {
               if (embedUrl) {
                 return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen />;
               }
-              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg)$/i)) {
+              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i)) {
                 return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
               }
               return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" alt="Cover" />;
