@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ClipboardPaste } from 'lucide-react';
 import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus } from './types';
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
 import { supabase } from './services/supabase';
 import { getEmbedUrl } from './services/mediaUtils';
-import { ClipboardPaste } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -190,6 +190,15 @@ const App: React.FC = () => {
     }
 
     return publicUrl;
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setNewImageUrl(text);
+    } catch (err) {
+      console.error('Failed to read clipboard contents: ', err);
+    }
   };
 
   const syncUserProfile = async (authUser: any) => {
@@ -777,15 +786,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePasteUrl = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      setNewImageUrl(text);
-    } catch (err) {
-      console.error('Failed to read clipboard contents: ', err);
-    }
-  };
-
   const filteredArticles = selectedCategory === 'All' 
     ? articles 
     : articles.filter(a => a.category === selectedCategory);
@@ -1045,14 +1045,14 @@ const App: React.FC = () => {
                   <div className="relative flex items-center">
                     <input 
                       placeholder="URL Immagine, Video o Social (YouTube, IG, FB, TikTok)" 
-                      className="w-full p-3 pr-10 border-2 border-stone-100 rounded-lg text-sm" 
+                      className="w-full p-3 pr-12 border-2 border-stone-100 rounded-lg text-sm" 
                       value={newImageUrl} 
                       onChange={e => setNewImageUrl(e.target.value)} 
                     />
                     <button
                       type="button"
-                      onClick={handlePasteUrl}
-                      className="absolute right-3 text-stone-400 hover:text-stone-800 transition-colors"
+                      onClick={handlePaste}
+                      className="absolute right-2 p-2 text-stone-400 hover:text-stone-800 transition-colors"
                       title="Incolla dagli appunti"
                     >
                       <ClipboardPaste size={18} />
