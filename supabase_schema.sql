@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.utenti (
     last_name TEXT,
     birth_date DATE,
     email TEXT NOT NULL UNIQUE,
-    role TEXT NOT NULL DEFAULT 'AUTHOR',
+    role TEXT NOT NULL DEFAULT 'READER',
     avatar TEXT,
     privacy_accepted BOOLEAN DEFAULT FALSE,
     contract_accepted BOOLEAN DEFAULT FALSE,
@@ -31,19 +31,18 @@ RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO public.utenti (
     id, username, first_name, last_name, birth_date, email, avatar, 
-    privacy_accepted, contract_accepted, role
+    privacy_accepted, contract_accepted
   )
   VALUES (
     new.id,
     COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
     new.raw_user_meta_data->>'first_name',
     new.raw_user_meta_data->>'last_name',
-    NULLIF(new.raw_user_meta_data->>'birth_date', '')::date,
+    (new.raw_user_meta_data->>'birth_date')::date,
     new.email,
     'https://api.dicebear.com/7.x/miniavs/svg?seed=' || COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
     COALESCE((new.raw_user_meta_data->>'privacy_accepted')::boolean, FALSE),
-    COALESCE((new.raw_user_meta_data->>'contract_accepted')::boolean, FALSE),
-    'AUTHOR'
+    COALESCE((new.raw_user_meta_data->>'contract_accepted')::boolean, FALSE)
   );
   RETURN new;
 END;
