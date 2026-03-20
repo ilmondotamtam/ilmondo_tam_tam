@@ -7,10 +7,13 @@ const app = express();
 app.use(express.json());
 
 // Configurazione S3 per Supabase
+const DEFAULT_S3_ENDPOINT = 'https://rsedmdahrhxmrlrkizmp.supabase.co/storage/v1/s3';
+const S3_ENDPOINT = process.env.SUPABASE_S3_ENDPOINT || DEFAULT_S3_ENDPOINT;
+
 const s3Client = new S3Client({
   forcePathStyle: true,
   region: process.env.SUPABASE_S3_REGION || 'us-east-1',
-  endpoint: process.env.SUPABASE_S3_ENDPOINT || 'https://rsedmdahrhxmrlrkizmp.supabase.co/storage/v1/s3',
+  endpoint: S3_ENDPOINT,
   credentials: {
     accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || '',
     secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || '',
@@ -65,7 +68,7 @@ app.post('/api/upload/presign', async (req, res) => {
     const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 60 });
     
     // Costruiamo l'URL pubblico finale
-    const publicUrl = `${process.env.SUPABASE_S3_ENDPOINT?.replace('/s3', '')}/object/public/${bucketName}/${fileName}`;
+    const publicUrl = `${S3_ENDPOINT.replace('/s3', '')}/object/public/${bucketName}/${fileName}`;
 
     res.json({ signedUrl, publicUrl });
   } catch (error) {

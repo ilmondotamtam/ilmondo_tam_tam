@@ -156,7 +156,7 @@ const App: React.FC = () => {
     }
   };
 
-  const uploadToS3 = async (file: File, fileName: string) => {
+  const uploadToS3 = async (file: File, fileName: string): Promise<string> => {
     // 1. Ottieni l'URL pre-firmato dal server
     const presignRes = await fetch('/api/upload/presign', {
       method: 'POST',
@@ -188,7 +188,7 @@ const App: React.FC = () => {
     const { signedUrl, publicUrl } = data;
 
     // 2. Esegui l'upload diretto su S3 usando XMLHttpRequest per il tracking del progresso
-    return new Promise((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       
       xhr.upload.addEventListener('progress', (event) => {
@@ -1455,7 +1455,7 @@ const App: React.FC = () => {
               if (embedUrl) {
                 return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen />;
               }
-              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg)$/i)) {
+              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i)) {
                 return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
               }
               return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" alt="Cover" />;
