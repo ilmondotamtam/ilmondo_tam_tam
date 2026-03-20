@@ -187,32 +187,45 @@ const App: React.FC = () => {
     
     const { signedUrl, publicUrl } = data;
 
-    // 2. Esegui l'upload diretto su S3 usando l'URL pre-firmato
-    const uploadRes = await fetch(signedUrl, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type }
-    });
-
-    if (!uploadRes.ok) {
-      const errorText = await uploadRes.text();
-      console.error('S3 Upload Error Details:', {
-        status: uploadRes.status,
-        statusText: uploadRes.statusText,
-        body: errorText
+    // 2. Esegui l'upload diretto su S3 usando XMLHttpRequest per il tracking del progresso
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percentComplete);
+        }
       });
-      
-      let friendlyError = `Errore S3 (${uploadRes.status}): ${uploadRes.statusText}`;
-      if (uploadRes.status === 403) {
-        friendlyError = "Accesso negato (403). Verifica le credenziali S3 e le impostazioni CORS del bucket su Supabase.";
-      } else if (uploadRes.status === 404) {
-        friendlyError = "Bucket non trovato (404). Assicurati che il bucket 'media' esista su Supabase.";
-      }
-      
-      throw new Error(friendlyError);
-    }
 
-    return publicUrl;
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(publicUrl);
+        } else {
+          console.error('S3 Upload Error Details:', {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            body: xhr.responseText
+          });
+          
+          let friendlyError = `Errore S3 (${xhr.status}): ${xhr.statusText}`;
+          if (xhr.status === 403) {
+            friendlyError = "Accesso negato (403). Verifica le credenziali S3 e le impostazioni CORS del bucket su Supabase.";
+          } else if (xhr.status === 404) {
+            friendlyError = "Bucket non trovato (404). Assicurati che il bucket 'media' esista su Supabase.";
+          }
+          reject(new Error(friendlyError));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error("Errore di rete durante l'upload su S3."));
+      });
+
+      xhr.open('PUT', signedUrl);
+      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.send(file);
+    });
   };
 
   const handlePaste = async () => {
