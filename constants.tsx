@@ -8,7 +8,6 @@ export const CATEGORIES: Category[] = [
   'Cibi e bevande',
   'Sport',
   'Curiosità', 
-  'Risate',
   'Città e paesi', 
   'Oggi parliamo di...'
 ];
