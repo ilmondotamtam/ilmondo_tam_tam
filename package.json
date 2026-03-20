@@ -16,15 +16,12 @@
     "@google/genai": "^1.35.0",
     "@supabase/supabase-js": "^2.98.0",
     "@types/express": "^5.0.6",
-    "cors": "^2.8.6",
     "express": "^5.2.1",
-    "lucide-react": "^0.577.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsx": "^4.21.0"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
