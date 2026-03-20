@@ -1144,6 +1144,14 @@ const App: React.FC = () => {
                       accept="image/*,video/*"
                     />
                   </div>
+                  {isUploading && (
+                    <div className="w-full mt-2">
+                      <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-red-600 transition-all" style={{ width: `${uploadProgress}%` }}></div>
+                      </div>
+                      <p className="text-[10px] text-center mt-1 text-stone-500 uppercase font-bold tracking-tighter">Caricamento in corso: {uploadProgress}%</p>
+                    </div>
+                  )}
                   <p className="text-[9px] text-stone-400 italic">Puoi incollare un link social o caricare un file.</p>
                 </div>
               </div>
@@ -1473,7 +1481,7 @@ const App: React.FC = () => {
               if (embedUrl) {
                 return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen />;
               }
-              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i)) {
+              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
                 return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
               }
               return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" alt="Cover" />;

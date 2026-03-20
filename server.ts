@@ -86,13 +86,15 @@ app.post('/api/upload/presign', async (req, res) => {
     
     if (baseUrl) {
       baseUrl = baseUrl.replace(/\/$/, ''); // Rimuovi eventuale slash finale
-      if (!baseUrl.includes('/storage/v1')) {
+      // Assicuriamoci che non ci sia già /storage/v1 alla fine prima di aggiungerlo
+      if (!baseUrl.endsWith('/storage/v1')) {
         baseUrl += '/storage/v1';
       }
     } else {
       // Altrimenti deriviamo dall'endpoint S3
+      // L'endpoint S3 di Supabase finisce solitamente in /storage/v1/s3
       baseUrl = S3_ENDPOINT.replace(/\/s3\/?$/, '');
-      if (!baseUrl.includes('/storage/v1')) {
+      if (!baseUrl.endsWith('/storage/v1')) {
         baseUrl = baseUrl.replace(/\/$/, '') + '/storage/v1';
       }
     }
