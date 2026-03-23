@@ -15,7 +15,6 @@ const App: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY'>('LOGIN');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'PRIORITY' | 'CHRONOLOGICAL'>('PRIORITY');
@@ -726,70 +725,6 @@ const App: React.FC = () => {
     setIsNewArticleModalOpen(false);
   };
 
-  const processAndUploadFile = async (file: File) => {
-    setSelectedFile(file);
-    setIsUploading(true);
-    setUploadProgress(0);
-    try {
-      const fileExt = file.name.split('.').pop() || (file.type.split('/')[1] || 'png');
-      const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-      
-      const publicUrl = await uploadToS3(file, uniqueName);
-      setNewImageUrl(publicUrl);
-      setArticleError('');
-      showToast("File caricato con successo!");
-    } catch (error: any) {
-      console.error('File upload error:', error);
-      setArticleError(`Errore durante l'upload del file: ${error.message}`);
-      showToast("Errore durante l'upload del file.", 'error');
-      setSelectedFile(null);
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await processAndUploadFile(file);
-  };
-
-  const handlePasteEvent = async (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1 || items[i].type.indexOf('video') !== -1) {
-        const file = items[i].getAsFile();
-        if (file) {
-          await processAndUploadFile(file);
-          break;
-        }
-      }
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file && (file.type.startsWith('image/') || file.type.startsWith('video/'))) {
-      await processAndUploadFile(file);
-    }
-  };
-
   const handleCreateArticle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN)) return;
@@ -798,7 +733,27 @@ const App: React.FC = () => {
     setIsGeneratingAI(true);
 
     try {
-      const finalImageUrl = newImageUrl;
+      let finalImageUrl = newImageUrl;
+
+      // Se c'è un file selezionato, caricalo ora su Supabase Storage
+      if (selectedFile) {
+        setIsUploading(true);
+        setUploadProgress(0);
+        
+        const fileExt = selectedFile.name.split('.').pop();
+        const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        
+        try {
+          const publicUrl = await uploadToS3(selectedFile, uniqueName);
+          finalImageUrl = publicUrl;
+          setNewImageUrl(publicUrl);
+        } catch (uploadErr: any) {
+          throw new Error(`Errore durante l'upload del file: ${uploadErr.message || 'Errore sconosciuto'}`);
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(0);
+        }
+      }
 
       // Inserimento nel DB
       const summary = newContent.length > 200 ? newContent.substring(0, 197) + '...' : newContent;
@@ -818,7 +773,6 @@ const App: React.FC = () => {
       // Reset e chiusura
       closeNewArticleModal();
       await fetchData();
-      showToast("Articolo pubblicato con successo!");
     } catch (err: any) {
       console.error("Article Creation Error:", err);
       setArticleError(err.message || "Errore durante il salvataggio dell'articolo.");
@@ -839,6 +793,23 @@ const App: React.FC = () => {
     } catch (err: any) {
       setAuthError(err.message);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Se c'era una vecchia anteprima locale, la revochiamo per liberare memoria
+    if (newImageUrl && newImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(newImageUrl);
+    }
+
+    // Mostriamo l'anteprima locale immediatamente
+    const previewUrl = URL.createObjectURL(file);
+    setNewImageUrl(previewUrl);
+    setSelectedFile(file);
+    setArticleError('');
+    // L'upload avverrà solo al momento della pubblicazione dell'articolo (handleCreateArticle)
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1106,14 +1077,7 @@ const App: React.FC = () => {
           <div className="bg-white p-8 md:p-12 max-w-2xl w-full border-t-[12px] border-red-600 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
             <p className="text-center text-[13.5px] text-stone-400 uppercase font-black mb-10 tracking-widest">Condividi la tua opinione con il mondo</p>
             
-            <form 
-              onSubmit={handleCreateArticle} 
-              className={`space-y-4 transition-all duration-300 ${isDragging ? 'scale-[0.98] opacity-70' : ''}`} 
-              onPaste={handlePasteEvent}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
+            <form onSubmit={handleCreateArticle} className="space-y-4">
               <input 
                 required 
                 placeholder="Titolo" 
@@ -1150,37 +1114,28 @@ const App: React.FC = () => {
                       <ClipboardPaste size={18} />
                     </button>
                   </div>
-                  <div 
-                    className={`relative group border-2 border-dashed rounded-lg transition-all duration-300 ${isDragging ? 'border-red-500 bg-red-50' : 'border-stone-200 bg-stone-50/50'} ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
-                    <div className="flex flex-col items-center justify-center py-6 px-4 cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                      <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-stone-500">
-                        {selectedFile ? `File: ${selectedFile.name.substring(0, 20)}...` : 'Trascina qui o clicca per caricare'}
-                      </p>
-                      <p className="text-[9px] text-stone-400 mt-1 italic">Immagini o Video (max 10MB)</p>
-                    </div>
-                    
-                    {selectedFile && !isUploading && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className={`flex-1 py-2 px-4 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${selectedFile ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                    >
+                      {selectedFile ? `Selezionato: ${selectedFile.name.substring(0, 15)}${selectedFile.name.length > 15 ? '...' : ''}` : 'Carica File'}
+                    </button>
+                    {selectedFile && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={() => {
                           setSelectedFile(null);
                           setNewImageUrl('');
                         }}
-                        className="absolute top-2 right-2 p-1.5 bg-white text-red-500 rounded-full shadow-sm hover:bg-red-50 transition-colors border border-red-100"
+                        className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
                         title="Rimuovi file"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                       </button>
                     )}
-
                     <input
                       type="file"
                       ref={fileInputRef}
