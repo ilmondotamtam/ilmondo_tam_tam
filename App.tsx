@@ -725,6 +725,26 @@ const App: React.FC = () => {
     setIsNewArticleModalOpen(false);
   };
 
+  const handlePasteEvent = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1 || items[i].type.indexOf('video') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          // Se c'era una vecchia anteprima locale, la revochiamo
+          if (newImageUrl && newImageUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(newImageUrl);
+          }
+          const previewUrl = URL.createObjectURL(file);
+          setNewImageUrl(previewUrl);
+          setSelectedFile(file);
+          setArticleError('');
+          break;
+        }
+      }
+    }
+  };
+
   const handleCreateArticle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN)) return;
@@ -735,7 +755,29 @@ const App: React.FC = () => {
     try {
       let finalImageUrl = newImageUrl;
 
-      // Se c'è un file selezionato, caricalo ora su Supabase Storage
+      // Se non c'è un file selezionato ma l'URL è un blob locale (es. incollato o residuo), 
+      // proviamo a recuperarlo e caricarlo per renderlo permanente
+      if (!selectedFile && newImageUrl.startsWith('blob:')) {
+        try {
+          const response = await fetch(newImageUrl);
+          const blob = await response.blob();
+          const file = new File([blob], `upload-${Date.now()}`, { type: blob.type });
+          
+          setIsUploading(true);
+          setUploadProgress(0);
+          const publicUrl = await uploadToS3(file, `pasted-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`);
+          finalImageUrl = publicUrl;
+          setNewImageUrl(publicUrl);
+        } catch (e) {
+          console.error("Failed to fetch/upload blob URL:", e);
+          // Se fallisce, proseguiamo (potrebbe fallire se il blob è scaduto o cross-origin)
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(0);
+        }
+      }
+
+      // Se c'è un file selezionato (caricato tramite input file), caricalo ora su Supabase Storage
       if (selectedFile) {
         setIsUploading(true);
         setUploadProgress(0);
@@ -1077,7 +1119,7 @@ const App: React.FC = () => {
           <div className="bg-white p-8 md:p-12 max-w-2xl w-full border-t-[12px] border-red-600 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
             <p className="text-center text-[13.5px] text-stone-400 uppercase font-black mb-10 tracking-widest">Condividi la tua opinione con il mondo</p>
             
-            <form onSubmit={handleCreateArticle} className="space-y-4">
+            <form onSubmit={handleCreateArticle} className="space-y-4" onPaste={handlePasteEvent}>
               <input 
                 required 
                 placeholder="Titolo" 
