@@ -21,8 +21,8 @@ function getS3Client() {
       region: process.env.SUPABASE_S3_REGION || 'us-east-1',
       endpoint: S3_ENDPOINT,
       credentials: {
-        accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || '',
-        secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || '',
+        accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || 'c69291e77f1d4552c9567eda8dc8d77d',
+        secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || 'c54bdc3aa79837a8d57389d8b2787165d5470af78b2db6565d5e3230cd5b5804',
       },
     });
   }
@@ -82,13 +82,21 @@ app.post('/api/upload/presign', async (req, res) => {
     // Costruiamo l'URL pubblico finale in modo robusto
     // Il formato standard di Supabase è: https://[ref].supabase.co/storage/v1/object/public/[bucket]/[file]
     // Se è definita SUPABASE_URL, la usiamo come base preferita
-    let baseUrl = process.env.SUPABASE_URL || DEFAULT_S3_ENDPOINT.replace(/\/storage\/v1\/s3\/?$/, '');
+    let baseUrl = process.env.SUPABASE_URL;
     
-    baseUrl = baseUrl.replace(/\/$/, ''); // Rimuovi eventuale slash finale
-    
-    // Assicuriamoci che non ci sia già /storage/v1 alla fine prima di aggiungerlo
-    if (!baseUrl.endsWith('/storage/v1')) {
-      baseUrl += '/storage/v1';
+    if (baseUrl) {
+      baseUrl = baseUrl.replace(/\/$/, ''); // Rimuovi eventuale slash finale
+      // Assicuriamoci che non ci sia già /storage/v1 alla fine prima di aggiungerlo
+      if (!baseUrl.endsWith('/storage/v1')) {
+        baseUrl += '/storage/v1';
+      }
+    } else {
+      // Altrimenti deriviamo dall'endpoint S3
+      // L'endpoint S3 di Supabase finisce solitamente in /storage/v1/s3
+      baseUrl = S3_ENDPOINT.replace(/\/s3\/?$/, '');
+      if (!baseUrl.endsWith('/storage/v1')) {
+        baseUrl = baseUrl.replace(/\/$/, '') + '/storage/v1';
+      }
     }
     
     const publicUrl = `${baseUrl}/object/public/${bucketName}/${fileName}`;
