@@ -239,6 +239,7 @@ const App: React.FC = () => {
     try {
       const text = await navigator.clipboard.readText();
       setNewImageUrl(text);
+      if (selectedFile) setSelectedFile(null);
     } catch (err) {
       console.error('Failed to read clipboard contents: ', err);
     }
@@ -795,9 +796,30 @@ const App: React.FC = () => {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | React.DragEvent) => {
+    let file: File | undefined;
+    
+    setIsDragging(false);
+
+    if ('files' in e.target && e.target.files) {
+      file = e.target.files[0];
+    } else if ('dataTransfer' in e) {
+      e.preventDefault();
+      file = e.dataTransfer.files[0];
+    }
+
     if (!file) return;
+
+    // Validazione dimensione file (es. max 50MB per video, 10MB per immagini)
+    const isVideo = file.type.startsWith('video/');
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024; // 50MB vs 10MB
+
+    if (file.size > maxSize) {
+      setArticleError(`Il file è troppo grande. Massimo ${isVideo ? '50MB' : '10MB'}.`);
+      return;
+    }
 
     // Se c'era una vecchia anteprima locale, la revochiamo per liberare memoria
     if (newImageUrl && newImageUrl.startsWith('blob:')) {
@@ -810,6 +832,18 @@ const App: React.FC = () => {
     setSelectedFile(file);
     setArticleError('');
     // L'upload avverrà solo al momento della pubblicazione dell'articolo (handleCreateArticle)
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1077,7 +1111,13 @@ const App: React.FC = () => {
           <div className="bg-white p-8 md:p-12 max-w-2xl w-full border-t-[12px] border-red-600 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
             <p className="text-center text-[13.5px] text-stone-400 uppercase font-black mb-10 tracking-widest">Condividi la tua opinione con il mondo</p>
             
-            <form onSubmit={handleCreateArticle} className="space-y-4">
+            <form 
+              onSubmit={handleCreateArticle} 
+              className={`space-y-4 transition-all duration-300 ${isDragging ? 'scale-[0.99] opacity-70' : ''}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleFileUpload}
+            >
               <input 
                 required 
                 placeholder="Titolo" 
@@ -1103,7 +1143,10 @@ const App: React.FC = () => {
                       placeholder="URL Immagine, Video o Social (YouTube, IG, FB, TikTok)" 
                       className="w-full p-3 pr-12 border-2 border-stone-100 rounded-lg text-sm" 
                       value={newImageUrl} 
-                      onChange={e => setNewImageUrl(e.target.value)} 
+                      onChange={e => {
+                        setNewImageUrl(e.target.value);
+                        if (selectedFile) setSelectedFile(null);
+                      }} 
                     />
                     <button
                       type="button"
