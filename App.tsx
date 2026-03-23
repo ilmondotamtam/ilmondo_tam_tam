@@ -733,28 +733,6 @@ const App: React.FC = () => {
     setIsGeneratingAI(true);
 
     try {
-      let finalImageUrl = newImageUrl;
-
-      // Se c'è un file selezionato, caricalo ora su Supabase Storage
-      if (selectedFile) {
-        setIsUploading(true);
-        setUploadProgress(0);
-        
-        const fileExt = selectedFile.name.split('.').pop();
-        const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-        
-        try {
-          const publicUrl = await uploadToS3(selectedFile, uniqueName);
-          finalImageUrl = publicUrl;
-          setNewImageUrl(publicUrl);
-        } catch (uploadErr: any) {
-          throw new Error(`Errore durante l'upload del file: ${uploadErr.message || 'Errore sconosciuto'}`);
-        } finally {
-          setIsUploading(false);
-          setUploadProgress(0);
-        }
-      }
-
       // Inserimento nel DB
       const summary = newContent.length > 200 ? newContent.substring(0, 197) + '...' : newContent;
       
@@ -763,7 +741,7 @@ const App: React.FC = () => {
         content: newContent,
         summary: summary,
         category: newArticleCategory,
-        image_url: finalImageUrl || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000',
+        image_url: newImageUrl || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000',
         author_id: user.id,
         author_name: `${user.firstName} ${user.lastName}`
       });
@@ -804,12 +782,28 @@ const App: React.FC = () => {
       URL.revokeObjectURL(newImageUrl);
     }
 
-    // Mostriamo l'anteprima locale immediatamente
-    const previewUrl = URL.createObjectURL(file);
-    setNewImageUrl(previewUrl);
-    setSelectedFile(file);
+    setIsUploading(true);
+    setUploadProgress(0);
     setArticleError('');
-    // L'upload avverrà solo al momento della pubblicazione dell'articolo (handleCreateArticle)
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+      
+      const publicUrl = await uploadToS3(file, uniqueName);
+      
+      // Popoliamo il campo URL con l'URL di Supabase
+      setNewImageUrl(publicUrl);
+      setSelectedFile(file); // Manteniamo il riferimento al file per la UI
+      showToast("File caricato con successo!");
+    } catch (error: any) {
+      console.error('File upload error:', error);
+      setArticleError(error.message || "Errore durante l'upload del file.");
+      showToast("Errore durante l'upload.", "error");
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
