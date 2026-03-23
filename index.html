@@ -8,11 +8,20 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        html {
+            scroll-behavior: smooth;
+        }
         body {
             font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
         h1, h2, h3, .newspaper-font {
             font-family: 'Playfair Display', serif;
+        }
+        /* Safari backdrop-filter compatibility */
+        [class*="backdrop-blur"] {
+            -webkit-backdrop-filter: blur(var(--tw-backdrop-blur));
         }
         /* Custom scrollbar for newspaper feel */
         ::-webkit-scrollbar {

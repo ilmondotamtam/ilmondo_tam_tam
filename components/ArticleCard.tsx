@@ -18,16 +18,31 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
     if (onLike) onLike();
   };
 
-  const handleShare = (e: React.MouseEvent) => {
+  const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (navigator.share) {
-      navigator.share({
-        title: article.title,
-        text: article.summary,
-        url: window.location.href,
-      });
+    const shareData = {
+      title: article.title,
+      text: article.summary,
+      url: window.location.href,
+    };
+
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          console.error('Share failed:', err);
+        }
+      }
     } else {
-      alert("Link copiato negli appunti!");
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        // We don't have access to showToast here easily without props, 
+        // but we can use a basic fallback or just assume it worked if no error.
+        // For maximum compatibility with the iframe, we avoid alert.
+      } catch (err) {
+        console.error('Clipboard failed:', err);
+      }
     }
   };
 
@@ -44,6 +59,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
               src={`https://api.dicebear.com/7.x/miniavs/svg?seed=${article.authorName}`} 
               alt={article.authorName}
               className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
             />
           </div>
           <div>
@@ -94,6 +110,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
                   allowFullScreen 
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   onClick={(e) => e.stopPropagation()}
+                  loading="lazy"
                 />
               </div>
             );
@@ -113,6 +130,8 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
               src={article.imageUrl} 
               alt={article.title} 
               className="w-full h-auto block transition-transform duration-500 hover:scale-[1.02]"
+              referrerPolicy="no-referrer"
+              loading="lazy"
             />
           );
         })()}

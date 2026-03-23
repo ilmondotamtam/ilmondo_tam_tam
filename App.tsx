@@ -61,6 +61,13 @@ const App: React.FC = () => {
   const [searchUserQuery, setSearchUserQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -395,10 +402,10 @@ const App: React.FC = () => {
 
       if (error) throw error;
       await fetchContacts();
-      alert('Richiesta di contatto inviata!');
+      showToast('Richiesta di contatto inviata!');
     } catch (err: any) {
       console.error("Send Contact Request Error:", err);
-      alert(err.message || "Errore durante l'invio della richiesta.");
+      showToast(err.message || "Errore durante l'invio della richiesta.", 'error');
     }
   };
 
@@ -413,24 +420,29 @@ const App: React.FC = () => {
       await fetchContacts();
     } catch (err: any) {
       console.error("Update Contact Status Error:", err);
-      alert(err.message || "Errore durante l'aggiornamento della richiesta.");
+      showToast(err.message || "Errore durante l'aggiornamento della richiesta.", 'error');
     }
   };
 
   const handleRemoveContact = async (contactId: string) => {
-    if (!confirm('Sei sicuro di voler rimuovere questo contatto?')) return;
-    try {
-      const { error } = await supabase
-        .from('contatti')
-        .delete()
-        .eq('id', contactId);
+    setConfirmModal({
+      message: 'Sei sicuro di voler rimuovere questo contatto?',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('contatti')
+            .delete()
+            .eq('id', contactId);
 
-      if (error) throw error;
-      await fetchContacts();
-    } catch (err: any) {
-      console.error("Remove Contact Error:", err);
-      alert(err.message || "Errore durante la rimozione del contatto.");
-    }
+          if (error) throw error;
+          await fetchContacts();
+          setConfirmModal(null);
+        } catch (err: any) {
+          console.error("Remove Contact Error:", err);
+          showToast(err.message || "Errore durante la rimozione del contatto.", 'error');
+        }
+      }
+    });
   };
 
   const handleSearchUsers = async () => {
@@ -564,7 +576,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Comment Error:", err);
-      alert("Errore durante l'invio del commento.");
+      showToast("Errore durante l'invio del commento.", 'error');
     }
   };
 
@@ -670,10 +682,10 @@ const App: React.FC = () => {
       });
       
       setIsProfileModalOpen(false);
-      alert('Profilo aggiornato con successo!');
+      showToast('Profilo aggiornato con successo!');
     } catch (err: any) {
       console.error("Profile Update Error:", err);
-      alert(err.message || "Errore durante l'aggiornamento del profilo.");
+      showToast(err.message || "Errore durante l'aggiornamento del profilo.", 'error');
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -694,7 +706,7 @@ const App: React.FC = () => {
       setProfileAvatar(publicUrl);
     } catch (error: any) {
       console.error('Avatar upload error:', error);
-      alert(error.message || "Errore durante l'upload dell'avatar.");
+      showToast(error.message || "Errore durante l'upload dell'avatar.", 'error');
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -702,6 +714,9 @@ const App: React.FC = () => {
   };
 
   const closeNewArticleModal = () => {
+    if (newImageUrl && newImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(newImageUrl);
+    }
     setNewTitle('');
     setNewContent('');
     setNewImageUrl('');
@@ -720,8 +735,7 @@ const App: React.FC = () => {
     try {
       let finalImageUrl = newImageUrl;
 
-      // Se c'è ancora un file selezionato (non ancora caricato), caricalo ora
-      // (Normalmente handleFileUpload carica subito, ma per sicurezza lasciamo questo controllo)
+      // Se c'è un file selezionato, caricalo ora su Supabase Storage
       if (selectedFile) {
         setIsUploading(true);
         setUploadProgress(0);
@@ -775,7 +789,7 @@ const App: React.FC = () => {
         email: authEmail,
       });
       if (error) throw error;
-      alert("Link di verifica inviato nuovamente!");
+      showToast("Link di verifica inviato nuovamente!");
     } catch (err: any) {
       setAuthError(err.message);
     }
@@ -785,31 +799,17 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Se c'era una vecchia anteprima locale, la revochiamo per liberare memoria
+    if (newImageUrl && newImageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(newImageUrl);
+    }
+
     // Mostriamo l'anteprima locale immediatamente
     const previewUrl = URL.createObjectURL(file);
     setNewImageUrl(previewUrl);
     setSelectedFile(file);
     setArticleError('');
-
-    // Avviamo l'upload immediatamente per generare il link Supabase
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    try {
-      const fileExt = file.name.split('.').pop();
-      const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-      
-      const publicUrl = await uploadToS3(file, uniqueName);
-      setNewImageUrl(publicUrl);
-      setSelectedFile(null); // Upload completato, non serve più il file originale
-    } catch (err: any) {
-      console.error("Upload error during selection:", err);
-      setArticleError(`Errore durante l'upload: ${err.message}`);
-      // Manteniamo il file selezionato così handleCreateArticle può riprovare l'upload se necessario
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
+    // L'upload avverrà solo al momento della pubblicazione dell'articolo (handleCreateArticle)
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -831,11 +831,11 @@ const App: React.FC = () => {
 
       if (error) throw error;
       setHeaderImage(publicUrl);
-      alert("Logo testata aggiornato con successo!");
+      showToast("Logo testata aggiornato con successo!");
     } catch (error: any) {
       console.error('Header upload error:', error);
       const errorMsg = error.message || "Errore durante l'aggiornamento del logo.";
-      alert(errorMsg);
+      showToast(errorMsg, 'error');
     } finally {
       setIsUploadingHeader(false);
       setUploadProgress(0);
@@ -868,7 +868,7 @@ const App: React.FC = () => {
             <aside className="lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6 order-1 lg:order-1">
               <div className="w-full relative group">
                 {headerImage && (
-                  <img src={headerImage} alt="Testata" className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm" />
+                  <img src={headerImage} alt="Testata" className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm" referrerPolicy="no-referrer" />
                 )}
                 {user?.role === UserRole.ADMIN && (
                   <div className="mt-2">
@@ -953,7 +953,7 @@ const App: React.FC = () => {
                       onClick={openProfileModal}
                       title="Modifica Profilo"
                     >
-                      <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-2 mx-auto transition-all" alt="Profile" />
+                      <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-2 mx-auto transition-all" alt="Profile" referrerPolicy="no-referrer" />
                       <h4 className="text-lg font-bold newspaper-font mb-1 group-hover:text-red-600 transition-colors">{user.firstName} {user.lastName}</h4>
                     </div>
                     <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6">{user.role}</span>
@@ -1179,7 +1179,7 @@ const App: React.FC = () => {
                     if (newImageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i) || (selectedFile && selectedFile.type.startsWith('video/'))) {
                       return <video src={newImageUrl} className="w-full max-h-80 object-contain" controls />;
                     }
-                    return <img src={newImageUrl} alt="Preview" className="w-full max-h-80 object-contain" />;
+                    return <img src={newImageUrl} alt="Preview" className="w-full max-h-80 object-contain" referrerPolicy="no-referrer" />;
                   })()}
                 </div>
               )}
@@ -1255,7 +1255,7 @@ const App: React.FC = () => {
                     return (
                       <div key={result.id} className="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-stone-100">
                         <div className="flex items-center gap-3">
-                          <img src={result.avatar} className="w-10 h-10 rounded-full border border-stone-200" alt={result.username} />
+                          <img src={result.avatar} className="w-10 h-10 rounded-full border border-stone-200" alt={result.username} referrerPolicy="no-referrer" />
                           <div>
                             <p className="text-sm font-bold">{result.firstName} {result.lastName}</p>
                             <p className="text-[10px] text-stone-400 uppercase font-bold">@{result.username}</p>
@@ -1288,7 +1288,7 @@ const App: React.FC = () => {
                   {contacts.filter(c => c.status === ContattoStatus.PENDING && c.receiverId === user.id).map(request => (
                     <div key={request.id} className="flex items-center justify-between bg-red-50 p-4 rounded-xl border border-red-100">
                       <div className="flex items-center gap-3">
-                        <img src={request.senderAvatar} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" alt={request.senderName} />
+                        <img src={request.senderAvatar} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" alt={request.senderName} referrerPolicy="no-referrer" />
                         <div>
                           <p className="text-sm font-bold">{request.senderName}</p>
                           <p className="text-[10px] text-stone-400 uppercase font-bold">Ti ha inviato una richiesta</p>
@@ -1326,7 +1326,7 @@ const App: React.FC = () => {
                   return (
                     <div key={contact.id} className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-100">
                       <div className="flex items-center gap-3">
-                        <img src={contactAvatar} className="w-10 h-10 rounded-full border border-stone-200" alt={contactName} />
+                        <img src={contactAvatar} className="w-10 h-10 rounded-full border border-stone-200" alt={contactName} referrerPolicy="no-referrer" />
                         <p className="text-sm font-bold">{contactName}</p>
                       </div>
                       <button 
@@ -1362,6 +1362,7 @@ const App: React.FC = () => {
                     src={profileAvatar} 
                     className="w-32 h-32 rounded-full border-4 border-stone-800 object-cover transition-all" 
                     alt="Avatar" 
+                    referrerPolicy="no-referrer"
                   />
                   <button 
                     type="button"
@@ -1484,7 +1485,7 @@ const App: React.FC = () => {
               if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
                 return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
               }
-              return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" alt="Cover" />;
+              return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" alt="Cover" referrerPolicy="no-referrer" />;
             })()}
             <div className="prose prose-stone max-w-none text-stone-800 text-lg font-serif leading-relaxed">
               {selectedArticle.content.split('\n').map((p, i) => (
@@ -1497,6 +1498,43 @@ const App: React.FC = () => {
               onAddComment={(content) => handleAddComment(selectedArticle.id, content)} 
             />
           </div>
+        </div>
+      )}
+      {/* Confirm Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[210] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
+          <div className="bg-white p-8 max-w-sm w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
+            <h3 className="text-xl font-bold newspaper-font mb-4 uppercase tracking-tighter">Conferma</h3>
+            <p className="text-stone-600 text-sm mb-8 leading-relaxed">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 border-2 border-stone-100 text-stone-400 py-3 font-black uppercase tracking-widest text-[10px] rounded-lg hover:bg-stone-50 transition-all"
+              >
+                Annulla
+              </button>
+              <button 
+                onClick={confirmModal.onConfirm}
+                className="flex-1 bg-red-600 text-white py-3 font-black uppercase tracking-widest text-[10px] rounded-lg hover:bg-red-700 transition-all shadow-lg"
+              >
+                Conferma
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300 ${
+          toast.type === 'success' ? 'bg-stone-900 text-white' : 'bg-red-600 text-white'
+        }`}>
+          {toast.type === 'success' ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          )}
+          <span className="text-sm font-bold uppercase tracking-widest">{toast.message}</span>
         </div>
       )}
     </div>
