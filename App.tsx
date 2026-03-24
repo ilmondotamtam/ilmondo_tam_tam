@@ -5,7 +5,7 @@ import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus } 
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
-import { supabase } from './services/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from './services/supabase';
 import { getEmbedUrl } from './services/mediaUtils';
 
 const App: React.FC = () => {
@@ -164,37 +164,13 @@ const App: React.FC = () => {
   };
 
   const uploadToS3 = async (file: File, fileName: string): Promise<string> => {
-    // 1. Ottieni l'URL pre-firmato dal server
-    const presignRes = await fetch('/api/upload/presign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName, contentType: file.type })
-    });
-
-    if (!presignRes.ok) {
-      const errorText = await presignRes.text();
-      let errorMsg = 'Errore durante la generazione del link di upload';
-      try {
-        const errData = JSON.parse(errorText);
-        errorMsg = errData.details || errData.error || errorMsg;
-      } catch (e) {
-        errorMsg = `${errorMsg} (${presignRes.status}): ${errorText.substring(0, 100)}`;
-      }
-      throw new Error(errorMsg);
-    }
-
-    const responseText = await presignRes.text();
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (e) {
-      console.error("Failed to parse presign response as JSON:", responseText);
-      throw new Error("Il server ha restituito una risposta non valida (non JSON).");
-    }
+    const bucketName = 'TamTamStorage';
     
-    const { signedUrl, publicUrl } = data;
+    // Otteniamo la sessione corrente per l'autenticazione
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || supabaseAnonKey;
 
-    // 2. Esegui l'upload diretto su S3 usando XMLHttpRequest per il tracking del progresso
+    // Eseguiamo l'upload diretto su Supabase Storage usando XMLHttpRequest per il tracking del progresso
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       
@@ -207,31 +183,46 @@ const App: React.FC = () => {
 
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
+          // Otteniamo l'URL pubblico finale
+          const { data: { publicUrl } } = supabase.storage
+            .from(bucketName)
+            .getPublicUrl(fileName);
           resolve(publicUrl);
         } else {
-          console.error('S3 Upload Error Details:', {
+          console.error('Supabase Storage Upload Error Details:', {
             status: xhr.status,
             statusText: xhr.statusText,
             body: xhr.responseText
           });
           
-          let friendlyError = `Errore S3 (${xhr.status}): ${xhr.statusText}`;
+          let friendlyError = `Errore Upload (${xhr.status}): ${xhr.statusText}`;
           if (xhr.status === 403) {
-            friendlyError = "Accesso negato (403). Verifica le credenziali S3 e le impostazioni CORS del bucket su Supabase.";
+            friendlyError = `Accesso negato (403). Verifica le politiche RLS del bucket '${bucketName}' su Supabase.`;
           } else if (xhr.status === 404) {
-            friendlyError = "Bucket non trovato (404). Assicurati che il bucket 'media' esista su Supabase.";
+            friendlyError = `Bucket '${bucketName}' non trovato (404). Assicurati che il bucket esista su Supabase.`;
           }
           reject(new Error(friendlyError));
         }
       });
 
       xhr.addEventListener('error', () => {
-        reject(new Error("Errore di rete durante l'upload su S3."));
+        reject(new Error("Errore di rete durante l'upload su Supabase."));
       });
 
-      xhr.open('PUT', signedUrl);
-      xhr.setRequestHeader('Content-Type', file.type);
-      xhr.send(file);
+      // L'endpoint per l'upload di Supabase è: [URL]/storage/v1/object/[BUCKET]/[PATH]
+      const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${fileName}`;
+      
+      xhr.open('POST', uploadUrl);
+      
+      // Headers necessari per Supabase
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('apikey', supabaseAnonKey);
+      
+      // Usiamo FormData per l'upload
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      xhr.send(formData);
     });
   };
 

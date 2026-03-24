@@ -5,8 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 //const supabaseUrl = process.env.SUPABASE_URL;
 //const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-const supabaseUrl = process.env.SUPABASE_URL || 'https://rsedmdahrhxmrlrkizmp.supabase.co';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzZWRtZGFocmh4bXJscmtpem1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyNTI3OTAsImV4cCI6MjA4NjgyODc5MH0.JDZs9Ry5encKZ0vKR0Uqk_5vD0fbhyWmctap4vcZnPk';
+export const supabaseUrl = process.env.SUPABASE_URL || 'https://rsedmdahrhxmrlrkizmp.supabase.co';
+export const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzZWRtZGFocmh4bXJscmtpem1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyNTI3OTAsImV4cCI6MjA4NjgyODc5MH0.JDZs9Ry5encKZ0vKR0Uqk_5vD0fbhyWmctap4vcZnPk';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
@@ -18,6 +18,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Forniamo valori di fallback per evitare l'errore fatale 'supabaseUrl is required' durante l'importazione del modulo.
 // Le chiamate effettive falliranno con 401/404 invece di far crashare l'intera app al caricamento.
 export const supabase = createClient(
-  supabaseUrl || 'https://placeholder-project.supabase.co', 
-  supabaseAnonKey || 'placeholder-key'
+  supabaseUrl, 
+  supabaseAnonKey
 );
