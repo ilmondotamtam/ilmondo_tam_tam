@@ -60,16 +60,13 @@ app.post('/api/upload/presign', async (req, res) => {
     return res.status(400).json({ error: 'fileName and contentType are required' });
   }
 
-  const accessKeyId = process.env.SUPABASE_S3_ACCESS_KEY_ID || 'c69291e77f1d4552c9567eda8dc8d77d';
-  const secretAccessKey = process.env.SUPABASE_S3_SECRET_ACCESS_KEY || 'c54bdc3aa79837a8d57389d8b2787165d5470af78b2db6565d5e3230cd5b5804';
-
-  if (!accessKeyId || !secretAccessKey) {
+  if (!process.env.SUPABASE_S3_ACCESS_KEY_ID || !process.env.SUPABASE_S3_SECRET_ACCESS_KEY) {
     console.error('S3 credentials are missing on the server');
     return res.status(500).json({ error: 'S3 credentials are not configured on the server. Please add SUPABASE_S3_ACCESS_KEY_ID and SUPABASE_S3_SECRET_ACCESS_KEY to your secrets.' });
   }
 
   try {
-    const bucketName = process.env.SUPABASE_S3_BUCKET || 'media';
+    const bucketName = process.env.SUPABASE_S3_BUCKET || 'TamTamStorage';
     const S3_ENDPOINT = process.env.SUPABASE_S3_ENDPOINT || DEFAULT_S3_ENDPOINT;
     const client = getS3Client();
     
