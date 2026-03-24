@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 //const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
 const supabaseUrl = process.env.SUPABASE_URL || 'https://rsedmdahrhxmrlrkizmp.supabase.co';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzZWRtZGFocmh4bXJscmtpem1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyNTI3OTAsImV4cCI6MjA4NjgyODc5MH0.JDZs9Ry5encKZ0vKR0Uqk_5vD0fbhyWmctap4vcZnPk';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_RPNjYNfNdxFHEv9viO4hOw_ECZxqZmR';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
