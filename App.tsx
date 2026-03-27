@@ -13,7 +13,7 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY'>('LOGIN');
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD'>('LOGIN');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [isLoading, setIsLoading] = useState(true);
@@ -57,6 +57,9 @@ const App: React.FC = () => {
   const [profileMobile, setProfileMobile] = useState('');
   const [profileJob, setProfileJob] = useState('');
   const [profileBio, setProfileBio] = useState('');
+  const [profileNewPassword, setProfileNewPassword] = useState('');
+  const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
+  const [isPasswordChangeOpen, setIsPasswordChangeOpen] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   // Form State Contacts
@@ -631,6 +634,13 @@ const App: React.FC = () => {
         // Chiudiamo la modale e resettiamo lo stato di caricamento
         setIsAuthModalOpen(false);
         setIsGeneratingAI(false);
+      } else if (authMode === 'FORGOT_PASSWORD') {
+        const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
+          redirectTo: `${window.location.origin}/`,
+        });
+        if (error) throw error;
+        showToast("Email di recupero inviata! Controlla la tua posta.");
+        setAuthMode('LOGIN');
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
@@ -653,6 +663,9 @@ const App: React.FC = () => {
     setProfileMobile(user.mobile || '');
     setProfileJob(user.job || '');
     setProfileBio(user.bio || '');
+    setProfileNewPassword('');
+    setProfileConfirmPassword('');
+    setIsPasswordChangeOpen(false);
     setIsProfileModalOpen(true);
   };
 
@@ -661,6 +674,18 @@ const App: React.FC = () => {
     if (!user) return;
     setIsUpdatingProfile(true);
     try {
+      // Update Password if provided
+      if (profileNewPassword) {
+        if (profileNewPassword.length < 6) {
+          throw new Error('La password deve essere di almeno 6 caratteri.');
+        }
+        if (profileNewPassword !== profileConfirmPassword) {
+          throw new Error('Le password non coincidono.');
+        }
+        const { error: pwdError } = await supabase.auth.updateUser({ password: profileNewPassword });
+        if (pwdError) throw pwdError;
+      }
+
       const { error } = await supabase
         .from('utenti')
         .update({
@@ -1047,17 +1072,36 @@ const App: React.FC = () => {
                   {authMode === 'LOGIN' && (
                     <>
                       <input required type="email" placeholder="Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-                      <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
+                      <div className="space-y-1">
+                        <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
+                        <div className="text-right">
+                          <button 
+                            type="button" 
+                            onClick={() => setAuthMode('FORGOT_PASSWORD')}
+                            className="text-[10px] font-bold uppercase text-stone-400 hover:text-stone-800 tracking-widest"
+                          >
+                            Password dimenticata?
+                          </button>
+                        </div>
+                      </div>
                     </>
+                  )}
+                  {authMode === 'FORGOT_PASSWORD' && (
+                    <div className="space-y-4">
+                      <p className="text-xs text-stone-500 font-serif text-center leading-relaxed">
+                        Inserisci la tua email per ricevere un link di ripristino della password.
+                      </p>
+                      <input required type="email" placeholder="Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                    </div>
                   )}
                   {authError && <div className="bg-red-50 border-l-4 border-red-500 p-3"><p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p></div>}
                   <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
-                    {isGeneratingAI ? 'CARICAMENTO...' : (authMode === 'LOGIN' ? 'ACCEDI' : 'REGISTRATI')}
+                    {isGeneratingAI ? 'CARICAMENTO...' : (authMode === 'LOGIN' ? 'ACCEDI' : authMode === 'FORGOT_PASSWORD' ? 'INVIA LINK' : 'REGISTRATI')}
                   </button>
                 </form>
                 <div className="mt-8 pt-6 border-t border-stone-100 text-center">
                   <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
-                    {authMode === 'LOGIN' ? 'Nuovo utente? Registrati' : 'Hai un account? Accedi'}
+                    {authMode === 'LOGIN' ? 'Nuovo utente? Registrati' : authMode === 'FORGOT_PASSWORD' ? 'Torna al Login' : 'Hai un account? Accedi'}
                   </button>
                 </div>
               </>
@@ -1178,7 +1222,7 @@ const App: React.FC = () => {
                       
                       let previewClass = "aspect-video w-full";
                       if (isTikTok) previewClass = "aspect-[9/16] h-80";
-                      else if (isInstagram) previewClass = "aspect-square h-80";
+                      else if (isInstagram) previewClass = "aspect-[1/1.25] h-80";
                       else if (isFacebook) previewClass = "aspect-[4/3] w-full";
 
                       return (
@@ -1491,6 +1535,42 @@ const App: React.FC = () => {
                     placeholder="Racconta qualcosa di te..."
                   />
                 </div>
+
+                <div className="pt-4 border-t border-stone-100">
+                  <button 
+                    type="button"
+                    onClick={() => setIsPasswordChangeOpen(!isPasswordChangeOpen)}
+                    className="w-full flex justify-between items-center py-2 group"
+                  >
+                    <h4 className="text-[10px] font-black uppercase text-stone-900 tracking-[0.2em] group-hover:text-red-600 transition-colors">Cambia Password</h4>
+                    <span className={`text-stone-400 text-xs transition-transform duration-300 ${isPasswordChangeOpen ? 'rotate-180' : ''}`}>▼</span>
+                  </button>
+                  
+                  {isPasswordChangeOpen && (
+                    <div className="space-y-4 mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div>
+                        <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Nuova Password</label>
+                        <input 
+                          type="password"
+                          className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                          value={profileNewPassword} 
+                          onChange={e => setProfileNewPassword(e.target.value)} 
+                          placeholder="Lascia vuoto per non cambiare"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Conferma Password</label>
+                        <input 
+                          type="password"
+                          className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                          value={profileConfirmPassword} 
+                          onChange={e => setProfileConfirmPassword(e.target.value)} 
+                          placeholder="Ripeti password"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -1530,16 +1610,7 @@ const App: React.FC = () => {
             {(() => {
               const embedUrl = getEmbedUrl(selectedArticle.imageUrl);
               if (embedUrl) {
-                const isTikTok = selectedArticle.imageUrl.includes('tiktok.com');
-                const isInstagram = selectedArticle.imageUrl.includes('instagram.com');
-                const isFacebook = selectedArticle.imageUrl.includes('facebook.com');
-                
-                let containerClass = "w-full aspect-video mb-12 rounded shadow-lg border-0";
-                if (isTikTok) containerClass = "w-full aspect-[9/16] max-h-[700px] mb-12 rounded shadow-lg border-0 mx-auto";
-                else if (isInstagram) containerClass = "w-full aspect-square max-h-[600px] mb-12 rounded shadow-lg border-0 mx-auto";
-                else if (isFacebook) containerClass = "w-full aspect-[4/3] max-h-[500px] mb-12 rounded shadow-lg border-0 mx-auto";
-
-                return <iframe src={embedUrl} className={containerClass} allowFullScreen />;
+                return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen />;
               }
               if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
                 return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
