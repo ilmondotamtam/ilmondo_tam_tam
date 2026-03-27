@@ -99,7 +99,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
             
             let containerClass = "aspect-video";
             if (isTikTok) containerClass = "aspect-[9/16] max-h-[600px] mx-auto";
-            else if (isInstagram) containerClass = "aspect-[1/1.25] max-h-[650px] mx-auto";
+            else if (isInstagram) containerClass = "aspect-square max-h-[600px] mx-auto";
             else if (isFacebook) containerClass = "aspect-[4/3] max-h-[500px] mx-auto";
 
             return (

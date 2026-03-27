@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS public.utenti (
     email TEXT NOT NULL UNIQUE,
     role TEXT NOT NULL DEFAULT 'AUTHOR',
     avatar TEXT,
+    city TEXT,
+    mobile TEXT,
+    job TEXT,
+    bio TEXT,
     privacy_accepted BOOLEAN DEFAULT FALSE,
     contract_accepted BOOLEAN DEFAULT FALSE,
     last_login TIMESTAMPTZ DEFAULT now(),
@@ -51,6 +55,10 @@ BEGIN
     birth_date, 
     email, 
     avatar, 
+    city,
+    mobile,
+    job,
+    bio,
     privacy_accepted, 
     contract_accepted, 
     role
@@ -63,6 +71,10 @@ BEGIN
     NULLIF(new.raw_user_meta_data->>'birth_date', '')::date,
     new.email,
     'https://api.dicebear.com/7.x/miniavs/svg?seed=' || final_username,
+    new.raw_user_meta_data->>'city',
+    new.raw_user_meta_data->>'mobile',
+    new.raw_user_meta_data->>'job',
+    new.raw_user_meta_data->>'bio',
     COALESCE((new.raw_user_meta_data->>'privacy_accepted')::boolean, FALSE),
     COALESCE((new.raw_user_meta_data->>'contract_accepted')::boolean, FALSE),
     'AUTHOR'
@@ -73,6 +85,10 @@ BEGIN
     last_name = EXCLUDED.last_name,
     birth_date = EXCLUDED.birth_date,
     email = EXCLUDED.email,
+    city = EXCLUDED.city,
+    mobile = EXCLUDED.mobile,
+    job = EXCLUDED.job,
+    bio = EXCLUDED.bio,
     role = EXCLUDED.role;
 
   RETURN new;

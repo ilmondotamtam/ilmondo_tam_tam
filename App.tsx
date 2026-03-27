@@ -53,6 +53,10 @@ const App: React.FC = () => {
   const [profileBirthDate, setProfileBirthDate] = useState('');
   const [profileUsername, setProfileUsername] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
+  const [profileCity, setProfileCity] = useState('');
+  const [profileMobile, setProfileMobile] = useState('');
+  const [profileJob, setProfileJob] = useState('');
+  const [profileBio, setProfileBio] = useState('');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   // Form State Contacts
@@ -255,7 +259,11 @@ const App: React.FC = () => {
           avatar: profile.avatar,
           firstName: profile.first_name,
           lastName: profile.last_name,
-          birthDate: profile.birth_date
+          birthDate: profile.birth_date,
+          city: profile.city,
+          mobile: profile.mobile,
+          job: profile.job,
+          bio: profile.bio
         });
       } else {
         // Se il profilo non esiste ancora (es. trigger in ritardo), impostiamo un profilo temporaneo
@@ -641,6 +649,10 @@ const App: React.FC = () => {
     setProfileBirthDate(user.birthDate || '');
     setProfileUsername(user.username || '');
     setProfileAvatar(user.avatar || '');
+    setProfileCity(user.city || '');
+    setProfileMobile(user.mobile || '');
+    setProfileJob(user.job || '');
+    setProfileBio(user.bio || '');
     setIsProfileModalOpen(true);
   };
 
@@ -656,7 +668,11 @@ const App: React.FC = () => {
           last_name: profileLastName,
           birth_date: profileBirthDate,
           username: profileUsername,
-          avatar: profileAvatar
+          avatar: profileAvatar,
+          city: profileCity,
+          mobile: profileMobile,
+          job: profileJob,
+          bio: profileBio
         })
         .eq('id', user.id);
 
@@ -669,7 +685,11 @@ const App: React.FC = () => {
         lastName: profileLastName,
         birthDate: profileBirthDate,
         username: profileUsername,
-        avatar: profileAvatar
+        avatar: profileAvatar,
+        city: profileCity,
+        mobile: profileMobile,
+        job: profileJob,
+        bio: profileBio
       });
       
       setIsProfileModalOpen(false);
@@ -908,7 +928,7 @@ const App: React.FC = () => {
 
               <nav className="flex flex-col space-y-1">
                 <button onClick={() => setSelectedCategory('All')} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
-                {CATEGORIES.map(cat => (
+                {[...CATEGORIES].sort((a, b) => a.localeCompare(b)).map(cat => (
                   <button key={cat} onClick={() => setSelectedCategory(cat)} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
                 ))}
               </nav>
@@ -1012,13 +1032,13 @@ const App: React.FC = () => {
                         <div className="flex items-start gap-3">
                           <input type="checkbox" id="privacy" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={privacyAccepted} onChange={(e) => setPrivacyAccepted(e.target.checked)} />
                           <label htmlFor="privacy" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
-                            Accetto la <a href="/privacy.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a> del sito.
+                            Accetto la <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/privacy.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a> del sito.
                           </label>
                         </div>
                         <div className="flex items-start gap-3">
                           <input type="checkbox" id="contract" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={contractAccepted} onChange={(e) => setContractAccepted(e.target.checked)} />
                           <label htmlFor="contract" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
-                            Accetto i termini del <a href="/contratto.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
+                            Accetto i termini del <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/contratto.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
                           </label>
                         </div>
                       </div>
@@ -1158,7 +1178,7 @@ const App: React.FC = () => {
                       
                       let previewClass = "aspect-video w-full";
                       if (isTikTok) previewClass = "aspect-[9/16] h-80";
-                      else if (isInstagram) previewClass = "aspect-[1/1.25] h-80";
+                      else if (isInstagram) previewClass = "aspect-square h-80";
                       else if (isFacebook) previewClass = "aspect-[4/3] w-full";
 
                       return (
@@ -1432,6 +1452,45 @@ const App: React.FC = () => {
                     onChange={e => setProfileBirthDate(e.target.value)} 
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Città</label>
+                    <input 
+                      className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                      value={profileCity} 
+                      onChange={e => setProfileCity(e.target.value)} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Cellulare</label>
+                    <input 
+                      type="tel"
+                      className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                      value={profileMobile} 
+                      onChange={e => setProfileMobile(e.target.value)} 
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Attività Lavorativa</label>
+                  <input 
+                    className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
+                    value={profileJob} 
+                    onChange={e => setProfileJob(e.target.value)} 
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Biografia</label>
+                  <textarea 
+                    className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm font-serif min-h-[100px] resize-none focus:border-stone-800 outline-none transition-colors" 
+                    value={profileBio} 
+                    onChange={e => setProfileBio(e.target.value)} 
+                    placeholder="Racconta qualcosa di te..."
+                  />
+                </div>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -1471,7 +1530,16 @@ const App: React.FC = () => {
             {(() => {
               const embedUrl = getEmbedUrl(selectedArticle.imageUrl);
               if (embedUrl) {
-                return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen />;
+                const isTikTok = selectedArticle.imageUrl.includes('tiktok.com');
+                const isInstagram = selectedArticle.imageUrl.includes('instagram.com');
+                const isFacebook = selectedArticle.imageUrl.includes('facebook.com');
+                
+                let containerClass = "w-full aspect-video mb-12 rounded shadow-lg border-0";
+                if (isTikTok) containerClass = "w-full aspect-[9/16] max-h-[700px] mb-12 rounded shadow-lg border-0 mx-auto";
+                else if (isInstagram) containerClass = "w-full aspect-square max-h-[600px] mb-12 rounded shadow-lg border-0 mx-auto";
+                else if (isFacebook) containerClass = "w-full aspect-[4/3] max-h-[500px] mb-12 rounded shadow-lg border-0 mx-auto";
+
+                return <iframe src={embedUrl} className={containerClass} allowFullScreen />;
               }
               if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
                 return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;

@@ -8,7 +8,7 @@ export const getEmbedUrl = (url: string) => {
 
   // Instagram
   const igMatch = url.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:p|reel|tv)\/([a-zA-Z0-9_-]+)/);
-  if (igMatch) return `https://www.instagram.com/p/${igMatch[1]}/embed`;
+  if (igMatch) return `https://www.instagram.com/p/${igMatch[1]}/embed/?captioned=false`;
 
   // TikTok
   const ttMatch = url.match(/tiktok\.com\/(?:@[\w.-]+\/video\/|v\/|embed\/v2\/|embed\/)(\d+)/);

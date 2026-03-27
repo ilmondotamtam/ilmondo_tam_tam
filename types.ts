@@ -14,6 +14,10 @@ export interface User {
   firstName?: string;
   lastName?: string;
   birthDate?: string;
+  city?: string;
+  mobile?: string;
+  job?: string;
+  bio?: string;
 }
 
 export interface Comment {
