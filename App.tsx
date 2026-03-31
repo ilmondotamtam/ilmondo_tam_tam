@@ -46,6 +46,7 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Form State Profile
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -139,7 +140,8 @@ const App: React.FC = () => {
           event: '*', 
           schema: 'public', 
           table: 'messaggi' 
-        }, () => {
+        }, (payload) => {
+          console.log("DEBUG: Realtime message update received:", payload);
           fetchMessages();
         })
         .subscribe();
@@ -441,7 +443,7 @@ const App: React.FC = () => {
   const fetchMessages = async () => {
     if (!user) return;
     try {
-      console.log("Fetching messages for user:", user.id);
+      console.log("DEBUG: Fetching messages for user:", user.id);
       const { data, error } = await supabase
         .from('messaggi')
         .select(`
@@ -454,10 +456,12 @@ const App: React.FC = () => {
 
       if (error) throw error;
 
-      console.log("Messages fetched:", data?.length || 0);
+      console.log("DEBUG: Raw messages from DB:", data);
 
       const formattedMessages: PrivateMessage[] = (data || []).map((m: any) => {
-        const senderInfo = m.sender || { 
+        // Supabase might return joined data as an array or object
+        const senderData = Array.isArray(m.sender) ? m.sender[0] : m.sender;
+        const senderInfo = senderData || { 
           first_name: 'Utente', 
           last_name: 'Sconosciuto', 
           avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${m.sender_id}` 
@@ -475,19 +479,22 @@ const App: React.FC = () => {
         };
       });
 
+      console.log("DEBUG: Formatted messages:", formattedMessages.length);
       setMessages(formattedMessages);
       
       // Calcola messaggi non letti
       const unread = formattedMessages.filter(m => m.receiverId === user.id && !m.isRead).length;
       setUnreadMessagesCount(unread);
-    } catch (err) {
-      console.error("Fetch Messages Error:", err);
+    } catch (err: any) {
+      console.error("DEBUG: Fetch Messages Error:", err);
+      showToast("Errore nel caricamento dei messaggi.", 'error');
     }
   };
 
   const handleSendMessage = async () => {
     if (!user || !selectedChatUserId || !newMessageContent.trim()) return;
     try {
+      console.log("DEBUG: Sending message to:", selectedChatUserId);
       const { error } = await supabase
         .from('messaggi')
         .insert({
@@ -497,6 +504,7 @@ const App: React.FC = () => {
         });
 
       if (error) throw error;
+      console.log("DEBUG: Message sent successfully");
       setNewMessageContent('');
       await fetchMessages();
     } catch (err: any) {
@@ -504,6 +512,13 @@ const App: React.FC = () => {
       showToast(err.message || "Errore durante l'invio del messaggio.", 'error');
     }
   };
+
+  // Scroll to bottom of messages
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, selectedChatUserId]);
 
   const handleMarkAsRead = async (senderId: string) => {
     if (!user) return;
@@ -1567,7 +1582,19 @@ const App: React.FC = () => {
           <div className="bg-white p-0 max-w-4xl w-full h-[80vh] border-t-[12px] border-stone-800 shadow-2xl rounded-xl overflow-hidden flex flex-col">
             <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50">
               <div>
-                <h2 className="text-2xl font-bold newspaper-font uppercase tracking-tighter">Messaggi Privati</h2>
+                <div className="flex items-center justify-between mb-8">
+                  <h2 className="text-2xl font-bold newspaper-font uppercase tracking-tighter">Messaggi Privati</h2>
+                  <button 
+                    onClick={() => {
+                      fetchMessages();
+                      fetchContacts();
+                    }}
+                    className="p-2 text-stone-400 hover:text-stone-800 transition-colors"
+                    title="Aggiorna"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                  </button>
+                </div>
                 <p className="text-[9px] text-stone-400 uppercase font-black tracking-widest">Comunicazione sicura tra utenti</p>
               </div>
               <button onClick={() => setIsMessagesModalOpen(false)} className="text-2xl hover:text-red-600 transition-colors">✕</button>
@@ -1583,7 +1610,18 @@ const App: React.FC = () => {
                       const otherUserId = contact.senderId === user.id ? contact.receiverId : contact.senderId;
                       const otherUserName = contact.senderId === user.id ? contact.receiverName : contact.senderName;
                       const otherUserAvatar = contact.senderId === user.id ? contact.receiverAvatar : contact.senderAvatar;
-                      const hasUnread = messages.some(m => m.senderId === otherUserId && m.receiverId === user.id && !m.isRead);
+                      
+                      const conversationMessages = messages.filter(m => 
+                        (m.senderId === user.id && m.receiverId === otherUserId) || 
+                        (m.senderId === otherUserId && m.receiverId === user.id)
+                      );
+                      
+                      const lastMessage = [...conversationMessages]
+                        .sort((a, b) => b.createdAt - a.createdAt)[0];
+                      
+                      const hasUnread = conversationMessages.some(m => m.senderId === otherUserId && m.receiverId === user.id && !m.isRead);
+                      
+                      console.log(`DEBUG: Sidebar contact ${otherUserId}. Messages: ${conversationMessages.length}. Unread: ${hasUnread}`);
 
                       return (
                         <button
@@ -1599,8 +1637,21 @@ const App: React.FC = () => {
                             {hasUnread && <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white"></div>}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-bold truncate ${hasUnread ? 'text-stone-900' : 'text-stone-600'}`}>{otherUserName}</p>
-                            <p className="text-[10px] text-stone-400 truncate italic">Clicca per chattare</p>
+                            <div className="flex justify-between items-start">
+                              <p className={`text-xs font-bold truncate ${hasUnread ? 'text-stone-900' : 'text-stone-600'}`}>{otherUserName}</p>
+                              {lastMessage && (
+                                <span className="text-[8px] text-stone-400">
+                                  {new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                            {lastMessage ? (
+                              <p className={`text-[10px] truncate ${hasUnread ? 'font-black text-stone-800' : 'text-stone-400'}`}>
+                                {lastMessage.senderId === user.id ? 'Tu: ' : ''}{lastMessage.content}
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-stone-300 italic">Nessun messaggio</p>
+                            )}
                           </div>
                         </button>
                       );
@@ -1632,9 +1683,22 @@ const App: React.FC = () => {
                       })()}
                     </div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-stone-50/20">
-                      {messages
-                        .filter(m => (m.senderId === user.id && m.receiverId === selectedChatUserId) || (m.senderId === selectedChatUserId && m.receiverId === user.id))
-                        .map(msg => (
+                      {(() => {
+                        const filtered = messages.filter(m => 
+                          (m.senderId === user.id && m.receiverId === selectedChatUserId) || 
+                          (m.senderId === selectedChatUserId && m.receiverId === user.id)
+                        );
+                        console.log(`DEBUG: Rendering chat with ${selectedChatUserId}. Messages found: ${filtered.length}. User ID: ${user.id}`);
+                        
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="h-full flex flex-col items-center justify-center text-stone-300 italic font-serif">
+                              <p>Inizia la conversazione...</p>
+                            </div>
+                          );
+                        }
+
+                        return filtered.map(msg => (
                           <div key={msg.id} className={`flex ${msg.senderId === user.id ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${msg.senderId === user.id ? 'bg-stone-800 text-white rounded-tr-none' : 'bg-white text-stone-800 border border-stone-100 rounded-tl-none'}`}>
                               <p className="leading-relaxed">{msg.content}</p>
@@ -1643,12 +1707,9 @@ const App: React.FC = () => {
                               </p>
                             </div>
                           </div>
-                        ))}
-                      {messages.filter(m => (m.senderId === user.id && m.receiverId === selectedChatUserId) || (m.senderId === selectedChatUserId && m.receiverId === user.id)).length === 0 && (
-                        <div className="h-full flex flex-col items-center justify-center text-stone-300 italic font-serif">
-                          <p>Inizia la conversazione...</p>
-                        </div>
-                      )}
+                        ));
+                      })()}
+                      <div ref={messagesEndRef} />
                     </div>
                     <div className="p-4 border-t border-stone-100 bg-white">
                       <div className="flex gap-2">
