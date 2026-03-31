@@ -407,7 +407,7 @@ const App: React.FC = () => {
   const fetchContacts = async () => {
     if (!user) return;
     try {
-      console.log("Fetching contacts for user:", user.id);
+      console.log("DEBUG: Fetching contacts for user:", user.id);
       const { data, error } = await supabase
         .from('contatti')
         .select(`
@@ -419,24 +419,33 @@ const App: React.FC = () => {
 
       if (error) throw error;
 
-      console.log("Contacts fetched:", data?.length || 0);
+      console.log("DEBUG: Contacts fetched:", data?.length || 0);
 
-      const formattedContacts: Contatto[] = (data || []).map((c: any) => ({
-        id: c.id,
-        senderId: c.sender_id,
-        receiverId: c.receiver_id,
-        status: c.status as ContattoStatus,
-        createdAt: new Date(c.created_at).getTime(),
-        updatedAt: new Date(c.updated_at).getTime(),
-        senderName: `${c.sender.first_name} ${c.sender.last_name}`,
-        senderAvatar: c.sender.avatar,
-        receiverName: `${c.receiver.first_name} ${c.receiver.last_name}`,
-        receiverAvatar: c.receiver.avatar
-      }));
+      const formattedContacts: Contatto[] = (data || []).map((c: any) => {
+        const senderData = Array.isArray(c.sender) ? c.sender[0] : c.sender;
+        const receiverData = Array.isArray(c.receiver) ? c.receiver[0] : c.receiver;
+        
+        return {
+          id: c.id,
+          senderId: c.sender_id,
+          receiverId: c.receiver_id,
+          status: c.status as ContattoStatus,
+          createdAt: new Date(c.created_at).getTime(),
+          updatedAt: new Date(c.updated_at).getTime(),
+          senderName: `${senderData?.first_name || 'Utente'} ${senderData?.last_name || ''}`,
+          senderAvatar: senderData?.avatar,
+          receiverName: `${receiverData?.first_name || 'Utente'} ${receiverData?.last_name || ''}`,
+          receiverAvatar: receiverData?.avatar
+        };
+      });
 
       setContacts(formattedContacts);
-    } catch (err) {
-      console.error("Fetch Contacts Error:", err);
+    } catch (err: any) {
+      console.error("DEBUG: Fetch Contacts Error:", err);
+      const errorMessage = err.message || "Errore sconosciuto";
+      const errorDetails = err.details || "";
+      console.error(`DEBUG: Error Message: ${errorMessage}, Details: ${errorDetails}`);
+      showToast(`Errore nel caricamento dei contatti: ${errorMessage}`, 'error');
     }
   };
 
@@ -487,7 +496,10 @@ const App: React.FC = () => {
       setUnreadMessagesCount(unread);
     } catch (err: any) {
       console.error("DEBUG: Fetch Messages Error:", err);
-      showToast("Errore nel caricamento dei messaggi.", 'error');
+      const errorMessage = err.message || "Errore sconosciuto";
+      const errorDetails = err.details || "";
+      console.error(`DEBUG: Error Message: ${errorMessage}, Details: ${errorDetails}`);
+      showToast(`Errore nel caricamento dei messaggi: ${errorMessage}`, 'error');
     }
   };
 
