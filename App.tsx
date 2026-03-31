@@ -1,4 +1,5 @@
 
+//Commento per rilevare la modifica.
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ClipboardPaste } from 'lucide-react';
 import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus, PrivateMessage } from './types';
