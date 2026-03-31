@@ -259,6 +259,10 @@ CREATE TABLE IF NOT EXISTS public.messaggi (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Abilita Realtime per le tabelle necessarie
+ALTER PUBLICATION supabase_realtime ADD TABLE public.messaggi;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.contatti;
+
 -- RLS per Messaggi
 ALTER TABLE public.messaggi ENABLE ROW LEVEL SECURITY;
 

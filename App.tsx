@@ -405,6 +405,7 @@ const App: React.FC = () => {
   const fetchContacts = async () => {
     if (!user) return;
     try {
+      console.log("Fetching contacts for user:", user.id);
       const { data, error } = await supabase
         .from('contatti')
         .select(`
@@ -415,6 +416,8 @@ const App: React.FC = () => {
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
       if (error) throw error;
+
+      console.log("Contacts fetched:", data?.length || 0);
 
       const formattedContacts: Contatto[] = (data || []).map((c: any) => ({
         id: c.id,
@@ -438,6 +441,7 @@ const App: React.FC = () => {
   const fetchMessages = async () => {
     if (!user) return;
     try {
+      console.log("Fetching messages for user:", user.id);
       const { data, error } = await supabase
         .from('messaggi')
         .select(`
@@ -449,6 +453,8 @@ const App: React.FC = () => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+
+      console.log("Messages fetched:", data?.length || 0);
 
       const formattedMessages: PrivateMessage[] = (data || []).map((m: any) => {
         const senderInfo = m.sender || { 
