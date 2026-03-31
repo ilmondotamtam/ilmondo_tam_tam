@@ -119,29 +119,46 @@ const App: React.FC = () => {
       }
     });
 
-    // Subscription per i messaggi
-    const messagesSubscription = supabase
-      .channel('public:messaggi')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'messaggi' 
-      }, () => {
-        fetchMessages();
-      })
-      .subscribe();
-
     return () => {
       subscription.unsubscribe();
-      messagesSubscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
+    let messagesSubscription: any = null;
+    let contactsSubscription: any = null;
+
     if (user) {
       fetchContacts();
       fetchMessages();
+
+      messagesSubscription = supabase
+        .channel(`public:messaggi:${user.id}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'messaggi' 
+        }, () => {
+          fetchMessages();
+        })
+        .subscribe();
+
+      contactsSubscription = supabase
+        .channel(`public:contatti:${user.id}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'contatti' 
+        }, () => {
+          fetchContacts();
+        })
+        .subscribe();
     }
+
+    return () => {
+      if (messagesSubscription) messagesSubscription.unsubscribe();
+      if (contactsSubscription) contactsSubscription.unsubscribe();
+    };
   }, [user?.id]);
 
   useEffect(() => {
@@ -424,23 +441,32 @@ const App: React.FC = () => {
         .from('messaggi')
         .select(`
           *,
-          sender:utenti!sender_id(username, avatar, first_name, last_name)
+          sender:utenti!sender_id(username, avatar, first_name, last_name),
+          receiver:utenti!receiver_id(username, avatar, first_name, last_name)
         `)
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      const formattedMessages: PrivateMessage[] = (data || []).map((m: any) => ({
-        id: m.id,
-        senderId: m.sender_id,
-        receiverId: m.receiver_id,
-        content: m.content,
-        isRead: m.is_read,
-        createdAt: new Date(m.created_at).getTime(),
-        senderName: `${m.sender.first_name} ${m.sender.last_name}`,
-        senderAvatar: m.sender.avatar
-      }));
+      const formattedMessages: PrivateMessage[] = (data || []).map((m: any) => {
+        const senderInfo = m.sender || { 
+          first_name: 'Utente', 
+          last_name: 'Sconosciuto', 
+          avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${m.sender_id}` 
+        };
+        
+        return {
+          id: m.id,
+          senderId: m.sender_id,
+          receiverId: m.receiver_id,
+          content: m.content,
+          isRead: m.is_read,
+          createdAt: new Date(m.created_at).getTime(),
+          senderName: `${senderInfo.first_name} ${senderInfo.last_name}`,
+          senderAvatar: senderInfo.avatar
+        };
+      });
 
       setMessages(formattedMessages);
       
