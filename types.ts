@@ -64,6 +64,18 @@ export interface Contatto {
   receiverAvatar?: string;
 }
 
+export interface PrivateMessage {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  isRead: boolean;
+  createdAt: number;
+  // Extended info for UI
+  senderName?: string;
+  senderAvatar?: string;
+}
+
 export type Category = 
   | 'Opinioni' 
   | 'Fatti' 

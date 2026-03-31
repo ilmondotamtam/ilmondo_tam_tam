@@ -248,3 +248,28 @@ WITH CHECK (
 CREATE POLICY "Owner Update/Delete"
 ON storage.objects FOR ALL
 USING ( bucket_id = 'TamTamStorage' AND auth.uid() = owner );
+
+-- 14. Tabella Messaggi Privati
+CREATE TABLE IF NOT EXISTS public.messaggi (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sender_id UUID REFERENCES public.utenti(id) ON DELETE CASCADE,
+    receiver_id UUID REFERENCES public.utenti(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- RLS per Messaggi
+ALTER TABLE public.messaggi ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Utenti possono vedere i propri messaggi" ON public.messaggi 
+FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY "Utenti possono inviare messaggi" ON public.messaggi 
+FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Utenti possono segnare come letti i messaggi ricevuti" ON public.messaggi 
+FOR UPDATE USING (auth.uid() = receiver_id);
+
+CREATE POLICY "Utenti possono eliminare i propri messaggi" ON public.messaggi 
+FOR DELETE USING (auth.uid() = sender_id OR auth.uid() = receiver_id);

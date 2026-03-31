@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ClipboardPaste } from 'lucide-react';
-import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus } from './types';
+import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus, PrivateMessage } from './types';
 import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
@@ -68,6 +68,14 @@ const App: React.FC = () => {
   const [searchUserQuery, setSearchUserQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  
+  // Form State Messages
+  const [messages, setMessages] = useState<PrivateMessage[]>([]);
+  const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
+  const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
+  const [newMessageContent, setNewMessageContent] = useState('');
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
@@ -106,15 +114,33 @@ const App: React.FC = () => {
       } else {
         setUser(null);
         setContacts([]);
+        setMessages([]);
+        setUnreadMessagesCount(0);
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Subscription per i messaggi
+    const messagesSubscription = supabase
+      .channel('public:messaggi')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'messaggi' 
+      }, () => {
+        fetchMessages();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+      messagesSubscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     if (user) {
       fetchContacts();
+      fetchMessages();
     }
   }, [user?.id]);
 
@@ -388,6 +414,78 @@ const App: React.FC = () => {
       setContacts(formattedContacts);
     } catch (err) {
       console.error("Fetch Contacts Error:", err);
+    }
+  };
+
+  const fetchMessages = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('messaggi')
+        .select(`
+          *,
+          sender:utenti!sender_id(username, avatar, first_name, last_name)
+        `)
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const formattedMessages: PrivateMessage[] = (data || []).map((m: any) => ({
+        id: m.id,
+        senderId: m.sender_id,
+        receiverId: m.receiver_id,
+        content: m.content,
+        isRead: m.is_read,
+        createdAt: new Date(m.created_at).getTime(),
+        senderName: `${m.sender.first_name} ${m.sender.last_name}`,
+        senderAvatar: m.sender.avatar
+      }));
+
+      setMessages(formattedMessages);
+      
+      // Calcola messaggi non letti
+      const unread = formattedMessages.filter(m => m.receiverId === user.id && !m.isRead).length;
+      setUnreadMessagesCount(unread);
+    } catch (err) {
+      console.error("Fetch Messages Error:", err);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!user || !selectedChatUserId || !newMessageContent.trim()) return;
+    try {
+      const { error } = await supabase
+        .from('messaggi')
+        .insert({
+          sender_id: user.id,
+          receiver_id: selectedChatUserId,
+          content: newMessageContent.trim()
+        });
+
+      if (error) throw error;
+      setNewMessageContent('');
+      await fetchMessages();
+    } catch (err: any) {
+      console.error("Send Message Error:", err);
+      showToast(err.message || "Errore durante l'invio del messaggio.", 'error');
+    }
+  };
+
+  const handleMarkAsRead = async (senderId: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('messaggi')
+        .update({ is_read: true })
+        .eq('receiver_id', user.id)
+        .eq('sender_id', senderId)
+        .eq('is_read', false);
+
+      if (error) throw error;
+      await fetchMessages();
+    } catch (err) {
+      console.error("Mark as Read Error:", err);
     }
   };
 
@@ -995,6 +1093,18 @@ const App: React.FC = () => {
                     <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6">{user.role}</span>
                     
                     <button 
+                      onClick={() => setIsMessagesModalOpen(true)}
+                      className="w-full mb-3 bg-stone-800 text-white text-[10px] font-black py-3 uppercase rounded shadow hover:bg-stone-700 transition-colors flex items-center justify-center gap-2"
+                    >
+                      Messaggi
+                      {unreadMessagesCount > 0 && (
+                        <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full animate-pulse">
+                          {unreadMessagesCount}
+                        </span>
+                      )}
+                    </button>
+
+                    <button 
                       onClick={() => setIsContactsModalOpen(true)}
                       className="w-full mb-3 bg-stone-100 text-stone-800 text-[10px] font-black py-3 uppercase rounded shadow hover:bg-stone-200 transition-colors border border-stone-200"
                     >
@@ -1377,6 +1487,7 @@ const App: React.FC = () => {
                   const isSender = contact.senderId === user.id;
                   const contactName = isSender ? contact.receiverName : contact.senderName;
                   const contactAvatar = isSender ? contact.receiverAvatar : contact.senderAvatar;
+                  const otherUserId = isSender ? contact.receiverId : contact.senderId;
                   
                   return (
                     <div key={contact.id} className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-100">
@@ -1384,18 +1495,156 @@ const App: React.FC = () => {
                         <img src={contactAvatar} className="w-10 h-10 rounded-full border border-stone-200" alt={contactName} referrerPolicy="no-referrer" />
                         <p className="text-sm font-bold">{contactName}</p>
                       </div>
-                      <button 
-                        onClick={() => handleRemoveContact(contact.id)}
-                        className="text-stone-300 hover:text-red-600 transition-colors p-1"
-                        title="Rimuovi Contatto"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                      </button>
+                      <div className="flex gap-1">
+                        <button 
+                          onClick={() => {
+                            setSelectedChatUserId(otherUserId);
+                            setIsMessagesModalOpen(true);
+                            setIsContactsModalOpen(false);
+                            handleMarkAsRead(otherUserId);
+                          }}
+                          className="text-stone-300 hover:text-stone-800 transition-colors p-1"
+                          title="Invia Messaggio"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        </button>
+                        <button 
+                          onClick={() => handleRemoveContact(contact.id)}
+                          className="text-stone-300 hover:text-red-600 transition-colors p-1"
+                          title="Rimuovi Contatto"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
                 {contacts.filter(c => c.status === ContattoStatus.ACCEPTED).length === 0 && (
                   <p className="col-span-2 text-center py-8 text-stone-400 italic text-sm">Non hai ancora nessun contatto. Usa la ricerca sopra per trovarne!</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Messaggi */}
+      {isMessagesModalOpen && user && (
+        <div className="fixed inset-0 z-[120] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
+          <div className="bg-white p-0 max-w-4xl w-full h-[80vh] border-t-[12px] border-stone-800 shadow-2xl rounded-xl overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50">
+              <div>
+                <h2 className="text-2xl font-bold newspaper-font uppercase tracking-tighter">Messaggi Privati</h2>
+                <p className="text-[9px] text-stone-400 uppercase font-black tracking-widest">Comunicazione sicura tra utenti</p>
+              </div>
+              <button onClick={() => setIsMessagesModalOpen(false)} className="text-2xl hover:text-red-600 transition-colors">✕</button>
+            </div>
+
+            <div className="flex-1 flex overflow-hidden">
+              {/* Sidebar Contatti */}
+              <div className="w-1/3 border-r border-stone-100 overflow-y-auto bg-stone-50/50">
+                <div className="p-4">
+                  <h3 className="text-[10px] font-black uppercase text-stone-400 mb-4 tracking-widest px-2">Conversazioni</h3>
+                  <div className="space-y-1">
+                    {contacts.filter(c => c.status === ContattoStatus.ACCEPTED).map(contact => {
+                      const otherUserId = contact.senderId === user.id ? contact.receiverId : contact.senderId;
+                      const otherUserName = contact.senderId === user.id ? contact.receiverName : contact.senderName;
+                      const otherUserAvatar = contact.senderId === user.id ? contact.receiverAvatar : contact.senderAvatar;
+                      const hasUnread = messages.some(m => m.senderId === otherUserId && m.receiverId === user.id && !m.isRead);
+
+                      return (
+                        <button
+                          key={contact.id}
+                          onClick={() => {
+                            setSelectedChatUserId(otherUserId);
+                            handleMarkAsRead(otherUserId);
+                          }}
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left group ${selectedChatUserId === otherUserId ? 'bg-white shadow-sm border border-stone-200' : 'hover:bg-white/50'}`}
+                        >
+                          <div className="relative">
+                            <img src={otherUserAvatar} className="w-10 h-10 rounded-full border border-stone-200 object-cover" alt={otherUserName} referrerPolicy="no-referrer" />
+                            {hasUnread && <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-white"></div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-bold truncate ${hasUnread ? 'text-stone-900' : 'text-stone-600'}`}>{otherUserName}</p>
+                            <p className="text-[10px] text-stone-400 truncate italic">Clicca per chattare</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {contacts.filter(c => c.status === ContattoStatus.ACCEPTED).length === 0 && (
+                      <div className="text-center py-10 px-4">
+                        <p className="text-[10px] text-stone-400 uppercase font-bold leading-relaxed">Aggiungi dei contatti per iniziare a chattare.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Area Chat */}
+              <div className="flex-1 flex flex-col bg-white">
+                {selectedChatUserId ? (
+                  <>
+                    <div className="p-4 border-b border-stone-50 flex items-center gap-3 bg-stone-50/30">
+                      {(() => {
+                        const contact = contacts.find(c => (c.senderId === selectedChatUserId && c.receiverId === user.id) || (c.senderId === user.id && c.receiverId === selectedChatUserId));
+                        const name = contact?.senderId === selectedChatUserId ? contact.senderName : contact?.receiverName;
+                        const avatar = contact?.senderId === selectedChatUserId ? contact.senderAvatar : contact?.receiverAvatar;
+                        return (
+                          <>
+                            <img src={avatar} className="w-8 h-8 rounded-full border border-stone-200 object-cover" alt={name} referrerPolicy="no-referrer" />
+                            <h4 className="text-sm font-bold newspaper-font">{name}</h4>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-stone-50/20">
+                      {messages
+                        .filter(m => (m.senderId === user.id && m.receiverId === selectedChatUserId) || (m.senderId === selectedChatUserId && m.receiverId === user.id))
+                        .map(msg => (
+                          <div key={msg.id} className={`flex ${msg.senderId === user.id ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${msg.senderId === user.id ? 'bg-stone-800 text-white rounded-tr-none' : 'bg-white text-stone-800 border border-stone-100 rounded-tl-none'}`}>
+                              <p className="leading-relaxed">{msg.content}</p>
+                              <p className={`text-[9px] mt-1 opacity-50 text-right ${msg.senderId === user.id ? 'text-stone-300' : 'text-stone-500'}`}>
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      {messages.filter(m => (m.senderId === user.id && m.receiverId === selectedChatUserId) || (m.senderId === selectedChatUserId && m.receiverId === user.id)).length === 0 && (
+                        <div className="h-full flex flex-col items-center justify-center text-stone-300 italic font-serif">
+                          <p>Inizia la conversazione...</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 border-t border-stone-100 bg-white">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Scrivi un messaggio..."
+                          className="flex-1 p-3 border-2 border-stone-100 rounded-xl text-sm focus:border-stone-800 outline-none transition-colors"
+                          value={newMessageContent}
+                          onChange={(e) => setNewMessageContent(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                        />
+                        <button
+                          onClick={handleSendMessage}
+                          disabled={!newMessageContent.trim()}
+                          className="bg-stone-800 text-white p-3 rounded-xl hover:bg-stone-700 transition-colors disabled:opacity-50"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-stone-400 p-10 text-center bg-stone-50/10">
+                    <div className="w-20 h-20 bg-stone-100 rounded-full flex items-center justify-center mb-6">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    </div>
+                    <h3 className="text-lg font-bold newspaper-font uppercase mb-2">Seleziona una conversazione</h3>
+                    <p className="text-xs font-serif italic max-w-xs">Scegli un contatto dalla lista a sinistra per iniziare a scambiare messaggi privati.</p>
+                  </div>
                 )}
               </div>
             </div>
