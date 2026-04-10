@@ -1,5 +1,4 @@
 
-//Commento per rilevare la modifica.
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ClipboardPaste } from 'lucide-react';
 import { User, Article, UserRole, Category, Comment, Contatto, ContattoStatus, PrivateMessage } from './types';
@@ -19,6 +18,18 @@ const App: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'PRIORITY' | 'CHRONOLOGICAL'>('PRIORITY');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (isSidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isSidebarOpen]);
 
   // Form State Auth
   const [authEmail, setAuthEmail] = useState('');
@@ -408,23 +419,40 @@ const App: React.FC = () => {
     if (!user) return;
     try {
       console.log("DEBUG: Fetching contacts for user:", user.id);
-      const { data, error } = await supabase
+      
+      // Fetch contacts first without join
+      const { data: contactsData, error: contactsError } = await supabase
         .from('contatti')
-        .select(`
-          *,
-          sender:utenti!sender_id(username, avatar, first_name, last_name),
-          receiver:utenti!receiver_id(username, avatar, first_name, last_name)
-        `)
+        .select('*')
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-      if (error) throw error;
+      if (contactsError) throw contactsError;
 
-      console.log("DEBUG: Contacts fetched:", data?.length || 0);
+      if (!contactsData || contactsData.length === 0) {
+        setContacts([]);
+        return;
+      }
 
-      const formattedContacts: Contatto[] = (data || []).map((c: any) => {
-        const senderData = Array.isArray(c.sender) ? c.sender[0] : c.sender;
-        const receiverData = Array.isArray(c.receiver) ? c.receiver[0] : c.receiver;
+      // Collect unique user IDs
+      const userIds = Array.from(new Set(contactsData.flatMap(c => [c.sender_id, c.receiver_id])));
+      
+      // Fetch user details
+      const { data: usersData, error: usersError } = await supabase
+        .from('utenti')
+        .select('id, username, avatar, first_name, last_name')
+        .in('id', userIds);
+
+      if (usersError) throw usersError;
+
+      const usersMap = new Map(usersData?.map(u => [u.id, u]));
+
+      const formattedContacts: Contatto[] = contactsData.map((c: any) => {
+        const senderData = usersMap.get(c.sender_id);
+        const receiverData = usersMap.get(c.receiver_id);
         
+        const sName = `${senderData?.first_name || ''} ${senderData?.last_name || ''}`.trim();
+        const rName = `${receiverData?.first_name || ''} ${receiverData?.last_name || ''}`.trim();
+
         return {
           id: c.id,
           senderId: c.sender_id,
@@ -432,10 +460,10 @@ const App: React.FC = () => {
           status: c.status as ContattoStatus,
           createdAt: new Date(c.created_at).getTime(),
           updatedAt: new Date(c.updated_at).getTime(),
-          senderName: `${senderData?.first_name || 'Utente'} ${senderData?.last_name || ''}`,
-          senderAvatar: senderData?.avatar,
-          receiverName: `${receiverData?.first_name || 'Utente'} ${receiverData?.last_name || ''}`,
-          receiverAvatar: receiverData?.avatar
+          senderName: sName || senderData?.username || 'Utente',
+          senderAvatar: senderData?.avatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${c.sender_id}`,
+          receiverName: rName || receiverData?.username || 'Utente',
+          receiverAvatar: receiverData?.avatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${c.receiver_id}`
         };
       });
 
@@ -453,28 +481,38 @@ const App: React.FC = () => {
     if (!user) return;
     try {
       console.log("DEBUG: Fetching messages for user:", user.id);
-      const { data, error } = await supabase
+      
+      // Fetch messages first without join
+      const { data: messagesData, error: messagesError } = await supabase
         .from('messaggi')
-        .select(`
-          *,
-          sender:utenti!sender_id(username, avatar, first_name, last_name),
-          receiver:utenti!receiver_id(username, avatar, first_name, last_name)
-        `)
+        .select('*')
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (messagesError) throw messagesError;
 
-      console.log("DEBUG: Raw messages from DB:", data);
+      if (!messagesData || messagesData.length === 0) {
+        setMessages([]);
+        setUnreadMessagesCount(0);
+        return;
+      }
 
-      const formattedMessages: PrivateMessage[] = (data || []).map((m: any) => {
-        // Supabase might return joined data as an array or object
-        const senderData = Array.isArray(m.sender) ? m.sender[0] : m.sender;
-        const senderInfo = senderData || { 
-          first_name: 'Utente', 
-          last_name: 'Sconosciuto', 
-          avatar: `https://api.dicebear.com/7.x/miniavs/svg?seed=${m.sender_id}` 
-        };
+      // Collect unique user IDs
+      const userIds = Array.from(new Set(messagesData.flatMap(m => [m.sender_id, m.receiver_id])));
+      
+      // Fetch user details
+      const { data: usersData, error: usersError } = await supabase
+        .from('utenti')
+        .select('id, username, avatar, first_name, last_name')
+        .in('id', userIds);
+
+      if (usersError) throw usersError;
+
+      const usersMap = new Map(usersData?.map(u => [u.id, u]));
+
+      const formattedMessages: PrivateMessage[] = messagesData.map((m: any) => {
+        const senderInfo = usersMap.get(m.sender_id);
+        const sName = `${senderInfo?.first_name || ''} ${senderInfo?.last_name || ''}`.trim();
         
         return {
           id: m.id,
@@ -483,8 +521,8 @@ const App: React.FC = () => {
           content: m.content,
           isRead: m.is_read,
           createdAt: new Date(m.created_at).getTime(),
-          senderName: `${senderInfo.first_name} ${senderInfo.last_name}`,
-          senderAvatar: senderInfo.avatar
+          senderName: sName || senderInfo?.username || 'Utente',
+          senderAvatar: senderInfo?.avatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${m.sender_id}`
         };
       });
 
@@ -921,7 +959,7 @@ const App: React.FC = () => {
 
   const handleCreateArticle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN)) return;
+    if (!user || (user.role !== UserRole.AUTHOR && user.role !== UserRole.ADMIN && user.role !== UserRole.GESTOR)) return;
     
     setArticleError('');
     setIsGeneratingAI(true);
@@ -1051,6 +1089,28 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-stone-50 font-sans">
+      {/* Mobile Header */}
+      <header className="lg:hidden bg-white border-b border-stone-200 py-4 px-6 sticky top-0 z-[70] flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2 -ml-2 text-stone-600 hover:text-stone-900 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+          </button>
+          {headerImage ? (
+            <img src={headerImage} alt="Logo" className="h-8 w-auto object-contain" referrerPolicy="no-referrer" />
+          ) : (
+            <h1 className="text-lg font-black newspaper-font tracking-tighter uppercase">Il Mondo Tam Tam</h1>
+          )}
+        </div>
+        {user && (
+          <div className="flex items-center gap-2">
+            <img src={user.avatar} className="w-8 h-8 rounded-full border border-stone-200" alt="Profile" referrerPolicy="no-referrer" />
+          </div>
+        )}
+      </header>
+
       <main className="flex-1 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-10">
         {isLoading ? (
           <div className="lg:col-span-12 py-32 text-center flex flex-col items-center">
@@ -1059,7 +1119,26 @@ const App: React.FC = () => {
           </div>
         ) : (
           <>
-            <aside className="lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6 order-1 lg:order-1">
+            {/* Mobile Overlay */}
+            {isSidebarOpen && (
+              <div 
+                className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] transition-opacity duration-300"
+                onClick={() => setIsSidebarOpen(false)}
+              />
+            )}
+
+            <aside className={`
+              lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6 order-1 lg:order-1
+              fixed lg:relative inset-y-0 left-0 w-80 lg:w-auto bg-white lg:bg-transparent z-[85] lg:z-0
+              transform transition-transform duration-300 ease-out p-8 lg:p-0 overflow-y-auto
+              ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'}
+            `}>
+              <div className="lg:hidden flex justify-between items-center mb-8 border-b border-stone-100 pb-4">
+                <h2 className="text-xl font-black newspaper-font uppercase tracking-tighter">Menu</h2>
+                <button onClick={() => setIsSidebarOpen(false)} className="text-stone-400 hover:text-stone-900">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
               <div className="w-full relative group">
                 {headerImage && (
                   <img src={headerImage} alt="Testata" className="w-full h-auto border-b-4 border-double border-stone-800 pb-4 shadow-sm" referrerPolicy="no-referrer" />
@@ -1092,14 +1171,14 @@ const App: React.FC = () => {
                   <p className="text-[10px] uppercase font-bold text-stone-500 mb-2 px-1">Modalità di Visione</p>
                   <div className="flex flex-col gap-1">
                     <button 
-                      onClick={() => setViewMode('PRIORITY')}
+                      onClick={() => { setViewMode('PRIORITY'); setIsSidebarOpen(false); }}
                       className={`text-[11px] font-bold py-2 px-3 rounded transition-all text-left flex items-center justify-between ${viewMode === 'PRIORITY' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}
                     >
                       I miei contatti
                       {viewMode === 'PRIORITY' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>}
                     </button>
                     <button 
-                      onClick={() => setViewMode('CHRONOLOGICAL')}
+                      onClick={() => { setViewMode('CHRONOLOGICAL'); setIsSidebarOpen(false); }}
                       className={`text-[11px] font-bold py-2 px-3 rounded transition-all text-left flex items-center justify-between ${viewMode === 'CHRONOLOGICAL' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}
                     >
                       Visualizza tutti
@@ -1110,14 +1189,30 @@ const App: React.FC = () => {
               )}
 
               <nav className="flex flex-col space-y-1">
-                <button onClick={() => setSelectedCategory('All')} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
+                <button onClick={() => { setSelectedCategory('All'); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
                 {[...CATEGORIES].sort((a, b) => a.localeCompare(b)).map(cat => (
-                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
+                  <button key={cat} onClick={() => { setSelectedCategory(cat); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
                 ))}
               </nav>
             </aside>
 
             <div className="lg:col-span-6 space-y-6 order-3 lg:order-2">
+              {/* Pulsanti Rapidi Categorie */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setSelectedCategory('Oggi parliamo di...')}
+                  className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all hover:bg-stone-800 hover:text-white flex items-center justify-center text-center rounded-md ${selectedCategory === 'Oggi parliamo di...' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-800'}`}
+                >
+                  Oggi parliamo di...
+                </button>
+                <button 
+                  onClick={() => setSelectedCategory('Opinioni')}
+                  className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all hover:bg-stone-800 hover:text-white flex items-center justify-center text-center rounded-md ${selectedCategory === 'Opinioni' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-800'}`}
+                >
+                  Opinioni
+                </button>
+              </div>
+
               <div className="space-y-4">
                 {filteredArticles.length > 0 ? (
                   filteredArticles.map(article => (
@@ -1172,7 +1267,7 @@ const App: React.FC = () => {
                     </button>
 
                     {/* Pulsante Inserimento Articolo per AUTHOR e ADMIN */}
-                    {(user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN) && (
+                    {(user.role === UserRole.AUTHOR || user.role === UserRole.ADMIN || user.role === UserRole.GESTOR) && (
                       <button 
                         onClick={() => setIsNewArticleModalOpen(true)}
                         className="w-full mb-3 bg-red-600 text-white text-[10px] font-black py-3 uppercase rounded shadow hover:bg-red-700 transition-colors"
@@ -1318,7 +1413,12 @@ const App: React.FC = () => {
                   value={newArticleCategory}
                   onChange={e => setNewArticleCategory(e.target.value as Category)}
                 >
-                  {CATEGORIES.map(cat => (
+                  {CATEGORIES.filter(cat => {
+                    if (cat === 'Oggi parliamo di...') {
+                      return user?.role === UserRole.ADMIN || user?.role === UserRole.GESTOR;
+                    }
+                    return true;
+                  }).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -1712,10 +1812,10 @@ const App: React.FC = () => {
 
                         return filtered.map(msg => (
                           <div key={msg.id} className={`flex ${msg.senderId === user.id ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${msg.senderId === user.id ? 'bg-stone-800 text-white rounded-tr-none' : 'bg-white text-stone-800 border border-stone-100 rounded-tl-none'}`}>
+                            <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${msg.senderId === user.id ? 'bg-stone-800 text-white rounded-tr-none' : 'bg-blue-100 text-stone-800 border border-blue-200 rounded-tl-none'}`}>
                               <p className="leading-relaxed">{msg.content}</p>
-                              <p className={`text-[9px] mt-1 opacity-50 text-right ${msg.senderId === user.id ? 'text-stone-300' : 'text-stone-500'}`}>
-                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              <p className={`text-[9px] mt-1 text-right ${msg.senderId === user.id ? 'text-stone-300 opacity-60' : 'text-blue-950 font-bold'}`}>
+                                {new Date(msg.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })} {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </p>
                             </div>
                           </div>
