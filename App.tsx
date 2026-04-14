@@ -91,6 +91,23 @@ const App: React.FC = () => {
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 200) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -1690,12 +1707,12 @@ const App: React.FC = () => {
 
       {/* Modal Messaggi */}
       {isMessagesModalOpen && user && (
-        <div className="fixed inset-0 z-[120] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
-          <div className="bg-white p-0 max-w-4xl w-full h-[80vh] border-t-[12px] border-stone-800 shadow-2xl rounded-xl overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50">
+        <div className="fixed inset-0 z-[120] bg-black/80 flex justify-center items-center p-0 sm:p-6 backdrop-blur-md">
+          <div className="bg-white p-0 max-w-4xl w-full h-full sm:h-[80vh] border-t-[12px] border-stone-800 shadow-2xl rounded-none sm:rounded-xl overflow-hidden flex flex-col">
+            <div className="p-4 sm:p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50">
               <div>
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-2xl font-bold newspaper-font uppercase tracking-tighter">Messaggi Privati</h2>
+                <div className="flex items-center justify-between mb-1 sm:mb-8">
+                  <h2 className="text-xl sm:text-2xl font-bold newspaper-font uppercase tracking-tighter">Messaggi Privati</h2>
                   <button 
                     onClick={() => {
                       fetchMessages();
@@ -1709,12 +1726,15 @@ const App: React.FC = () => {
                 </div>
                 <p className="text-[9px] text-stone-400 uppercase font-black tracking-widest">Comunicazione sicura tra utenti</p>
               </div>
-              <button onClick={() => setIsMessagesModalOpen(false)} className="text-2xl hover:text-red-600 transition-colors">✕</button>
+              <button onClick={() => { setIsMessagesModalOpen(false); setSelectedChatUserId(null); }} className="text-2xl hover:text-red-600 transition-colors">✕</button>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden relative">
               {/* Sidebar Contatti */}
-              <div className="w-1/3 border-r border-stone-100 overflow-y-auto bg-stone-50/50">
+              <div className={`
+                ${selectedChatUserId ? 'hidden lg:block' : 'block'} 
+                w-full lg:w-1/3 border-r border-stone-100 overflow-y-auto bg-stone-50/50 transition-all duration-300
+              `}>
                 <div className="p-4">
                   <h3 className="text-[10px] font-black uppercase text-stone-400 mb-4 tracking-widest px-2">Conversazioni</h3>
                   <div className="space-y-1">
@@ -1778,10 +1798,19 @@ const App: React.FC = () => {
               </div>
 
               {/* Area Chat */}
-              <div className="flex-1 flex flex-col bg-white">
+              <div className={`
+                ${selectedChatUserId ? 'flex' : 'hidden lg:flex'} 
+                flex-1 flex-col bg-white transition-all duration-300
+              `}>
                 {selectedChatUserId ? (
                   <>
                     <div className="p-4 border-b border-stone-50 flex items-center gap-3 bg-stone-50/30">
+                      <button 
+                        onClick={() => setSelectedChatUserId(null)}
+                        className="lg:hidden p-2 -ml-2 text-stone-400 hover:text-stone-800 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                      </button>
                       {(() => {
                         const contact = contacts.find(c => (c.senderId === selectedChatUserId && c.receiverId === user.id) || (c.senderId === user.id && c.receiverId === selectedChatUserId));
                         const name = contact?.senderId === selectedChatUserId ? contact.senderName : contact?.receiverName;
@@ -2052,7 +2081,7 @@ const App: React.FC = () => {
       {/* Modal Articolo Selezionato */}
       {selectedArticle && (
         <div className="fixed inset-0 z-50 bg-black/90 flex justify-center items-start overflow-y-auto p-4 md:p-10 backdrop-blur-sm">
-          <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl border-x-[12px] border-stone-800">
+          <div className="bg-white max-w-4xl w-full p-8 md:p-16 relative shadow-2xl border-x-[12px] border-stone-800 mt-[50px] mb-[50px]">
             <button onClick={() => setSelectedArticle(null)} className="absolute top-6 right-6 text-3xl font-light hover:text-red-600 transition-colors">✕</button>
             <div className="text-center mb-12">
               <span className="text-xs font-black text-red-600 uppercase tracking-[0.3em]">{selectedArticle.category}</span>
@@ -2122,6 +2151,17 @@ const App: React.FC = () => {
           <span className="text-sm font-bold uppercase tracking-widest">{toast.message}</span>
         </div>
       )}
+
+      {/* Scroll to Top Button */}
+      <button
+        onClick={scrollToTop}
+        className={`fixed bottom-8 right-8 z-[100] w-12 h-12 bg-stone-900 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:bg-stone-700 hover:scale-110 active:scale-90 ${
+          showScrollTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
+        }`}
+        title="Torna in alto"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+      </button>
     </div>
   );
 };
