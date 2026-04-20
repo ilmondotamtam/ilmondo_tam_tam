@@ -92,6 +92,22 @@ const App: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(30);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  const filteredArticles = useMemo(() => {
+    return selectedCategory === 'All' 
+      ? articles 
+      : articles.filter(a => a.category === selectedCategory);
+  }, [articles, selectedCategory]);
+
+  const visibleArticles = useMemo(() => {
+    return filteredArticles.slice(0, visibleCount);
+  }, [filteredArticles, visibleCount]);
+
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [selectedCategory]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -104,6 +120,23 @@ const App: React.FC = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => prev + 30);
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [visibleArticles.length]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1091,10 +1124,6 @@ const App: React.FC = () => {
     }
   };
 
-  const filteredArticles = selectedCategory === 'All' 
-    ? articles 
-    : articles.filter(a => a.category === selectedCategory);
-
   const topOpinions = useMemo(() => {
     return articles
       .filter(a => a.category === 'Opinioni')
@@ -1231,16 +1260,23 @@ const App: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                {filteredArticles.length > 0 ? (
-                  filteredArticles.map(article => (
-                    <ArticleCard 
-                      key={article.id} 
-                      article={article} 
-                      onClick={setSelectedArticle} 
-                      onLike={() => handleLike(article.id)}
-                      currentUserId={user?.id}
-                    />
-                  ))
+                {visibleArticles.length > 0 ? (
+                  <>
+                    {visibleArticles.map(article => (
+                      <ArticleCard 
+                        key={article.id} 
+                        article={article} 
+                        onClick={setSelectedArticle} 
+                        onLike={() => handleLike(article.id)}
+                        currentUserId={user?.id}
+                      />
+                    ))}
+                    {visibleArticles.length < filteredArticles.length && (
+                      <div ref={loadMoreRef} className="h-10 w-full flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-stone-800"></div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="py-20 text-center text-stone-400 newspaper-font italic text-xl">
                     Nessuna opinione trovata.
