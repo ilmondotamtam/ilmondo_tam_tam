@@ -1236,9 +1236,23 @@ const App: React.FC = () => {
 
               <nav className="flex flex-col space-y-1">
                 <button onClick={() => { setSelectedCategory('All'); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
-                {[...CATEGORIES].sort((a, b) => a.localeCompare(b)).map(cat => (
-                  <button key={cat} onClick={() => { setSelectedCategory(cat); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
-                ))}
+                
+                {CATEGORIES.includes('Oggi parliamo di...') && (
+                  <button 
+                    onClick={() => { setSelectedCategory('Oggi parliamo di...'); setIsSidebarOpen(false); }} 
+                    style={navStyles} 
+                    className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'Oggi parliamo di...' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-blue-500'}`}
+                  >
+                    Oggi parliamo di...
+                  </button>
+                )}
+
+                {[...CATEGORIES]
+                  .filter(cat => cat !== 'Oggi parliamo di...')
+                  .sort((a, b) => a.localeCompare(b))
+                  .map(cat => (
+                    <button key={cat} onClick={() => { setSelectedCategory(cat); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
+                  ))}
               </nav>
             </aside>
 
@@ -1466,12 +1480,14 @@ const App: React.FC = () => {
                   value={newArticleCategory}
                   onChange={e => setNewArticleCategory(e.target.value as Category)}
                 >
-                  {CATEGORIES.filter(cat => {
+                  {[...CATEGORIES].filter(cat => {
                     if (cat === 'Oggi parliamo di...') {
                       return user?.role === UserRole.ADMIN || user?.role === UserRole.GESTOR;
                     }
                     return true;
-                  }).map(cat => (
+                  })
+                  .sort((a, b) => a.localeCompare(b))
+                  .map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
