@@ -1,14 +1,17 @@
 
 import React, { useState } from 'react';
 import { Comment, User } from '../types';
+import { Translations } from '../translations';
 
 interface CommentSectionProps {
   comments: Comment[];
   currentUser: User | null;
   onAddComment: (content: string) => void;
+  t: Translations;
+  language?: string;
 }
 
-export const CommentSection: React.FC<CommentSectionProps> = ({ comments, currentUser, onAddComment }) => {
+export const CommentSection: React.FC<CommentSectionProps> = ({ comments, currentUser, onAddComment, t, language = 'it' }) => {
   const [newComment, setNewComment] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -21,13 +24,13 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ comments, curren
 
   return (
     <div className="mt-8 border-t pt-6">
-      <h3 className="text-xl font-bold mb-4 newspaper-font">Commenti ({comments.length})</h3>
+      <h3 className="text-xl font-bold mb-4 newspaper-font">{t.article.commentsTitle} ({comments.length})</h3>
       
       {currentUser ? (
         <form onSubmit={handleSubmit} className="mb-8">
           <textarea
             className="w-full p-3 border border-stone-300 focus:ring-1 focus:ring-stone-800 outline-none resize-none h-24 text-sm"
-            placeholder="Lascia un commento..."
+            placeholder={t.article.leaveComment}
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
           />
@@ -35,11 +38,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ comments, curren
             type="submit"
             className="mt-2 bg-stone-800 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700 transition-colors"
           >
-            Pubblica Commento
+            {t.article.publishComment}
           </button>
         </form>
       ) : (
-        <p className="text-sm text-stone-500 italic mb-8">Accedi per poter commentare questo articolo.</p>
+        <p className="text-sm text-stone-500 italic mb-8">{t.article.loginToComment}</p>
       )}
 
       <div className="space-y-6">
@@ -48,7 +51,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ comments, curren
             <div className="flex justify-between items-center mb-1">
               <span className="font-bold text-sm text-stone-800">{comment.username}</span>
               <span className="text-xs text-stone-400">
-                {new Date(comment.timestamp).toLocaleString('it-IT')}
+                {new Date(comment.timestamp).toLocaleString(language === 'it' ? 'it-IT' : language === 'en' ? 'en-GB' : language === 'fr' ? 'fr-FR' : 'es-ES')}
               </span>
             </div>
             <p className="text-gray-700 text-sm leading-relaxed">
@@ -57,7 +60,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ comments, curren
           </div>
         ))}
         {comments.length === 0 && (
-          <p className="text-stone-400 text-sm text-center">Nessun commento ancora. Sii il primo!</p>
+          <p className="text-stone-400 text-sm text-center">{t.article.noCommentsYet}</p>
         )}
       </div>
     </div>

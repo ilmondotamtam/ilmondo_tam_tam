@@ -2,15 +2,18 @@
 import React, { useState } from 'react';
 import { Article } from '../types';
 import { getEmbedUrl } from '../services/mediaUtils';
+import { Translations } from '../translations';
 
 interface ArticleCardProps {
   article: Article;
   onClick: (article: Article) => void;
   onLike?: () => void;
   currentUserId?: string;
+  t: Translations;
+  language?: string;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLike, currentUserId }) => {
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLike, currentUserId, t, language = 'it' }) => {
   const liked = currentUserId ? article.likedBy?.includes(currentUserId) : false;
 
   const handleLike = (e: React.MouseEvent) => {
@@ -67,9 +70,9 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
               {article.authorName}
             </h3>
             <div className="flex items-center gap-2 text-[10px] text-stone-500 uppercase font-bold tracking-tight">
-              <span className="text-red-600">{article.category}</span>
+              <span className="text-red-600">{t.categories[article.category] || article.category}</span>
               <span>•</span>
-              <span>{new Date(article.timestamp).toLocaleDateString('it-IT')}</span>
+              <span>{new Date(article.timestamp).toLocaleDateString(language === 'it' ? 'it-IT' : language === 'en' ? 'en-GB' : language === 'fr' ? 'fr-FR' : 'es-ES')}</span>
             </div>
           </div>
         </div>
@@ -146,9 +149,9 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
                  <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="white" stroke="white"><circle cx="12" cy="12" r="10"/></svg>
                </div>
             </div>
-            <span className="ml-1">{article.likes || 0} persone hanno apprezzato</span>
+            <span className="ml-1">{article.likes || 0} {t.article.peopleAppreciated}</span>
           </div>
-          <span className="text-[11px] text-stone-500">{article.comments.length} commenti</span>
+          <span className="text-[11px] text-stone-500">{article.comments.length} {t.article.commentCount}</span>
         </div>
         
         <div className="flex items-center border-t border-stone-50 pt-2">
@@ -159,20 +162,20 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/>
             </svg>
-            <span className="text-xs font-bold uppercase tracking-tight">Mi piace</span>
+            <span className="text-xs font-bold uppercase tracking-tight">{t.article.like}</span>
           </button>
           <button 
             className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-stone-600 hover:bg-stone-50 transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span className="text-xs font-bold uppercase tracking-tight">Commenta</span>
+            <span className="text-xs font-bold uppercase tracking-tight">{t.article.comment}</span>
           </button>
           <button 
             onClick={handleShare}
             className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-stone-600 hover:bg-stone-50 transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            <span className="text-xs font-bold uppercase tracking-tight">Condividi</span>
+            <span className="text-xs font-bold uppercase tracking-tight">{t.article.share}</span>
           </button>
         </div>
       </div>

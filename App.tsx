@@ -7,9 +7,12 @@ import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
 import { supabase, supabaseUrl, supabaseAnonKey } from './services/supabase';
 import { getEmbedUrl } from './services/mediaUtils';
+import { Language, translations } from './translations';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [language, setLanguage] = useState<Language>('it');
+  const t = translations[language];
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -1161,7 +1164,7 @@ const App: React.FC = () => {
         {isLoading ? (
           <div className="lg:col-span-12 py-32 text-center flex flex-col items-center">
             <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
-            <p className="mt-6 text-stone-400 newspaper-font italic text-xl">Caricamento in corso...</p>
+            <p className="mt-6 text-stone-400 newspaper-font italic text-xl">{t.loading}</p>
           </div>
         ) : (
           <>
@@ -1180,9 +1183,23 @@ const App: React.FC = () => {
               ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'}
             `}>
               <div className="lg:hidden flex justify-between items-center mb-8 border-b border-stone-100 pb-4">
-                <h2 className="text-xl font-black newspaper-font uppercase tracking-tighter">Menu</h2>
+                <h2 className="text-xl font-black newspaper-font uppercase tracking-tighter">{t.menu}</h2>
                 <button onClick={() => setIsSidebarOpen(false)} className="text-stone-400 hover:text-stone-900">
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+              <div className="flex justify-center gap-4 mb-4">
+                <button onClick={() => setLanguage('it')} className={`transition-transform hover:scale-110 ${language === 'it' ? 'grayscale-0 ring-2 ring-stone-800 ring-offset-2' : 'grayscale opacity-50 hover:grayscale-0 hover:opacity-100'}`} title="Italiano">
+                  <img src="https://flagcdn.com/w80/it.png" alt="Italiano" className="w-8 h-6 object-cover rounded shadow-sm border border-stone-100" referrerPolicy="no-referrer" />
+                </button>
+                <button onClick={() => setLanguage('en')} className={`transition-transform hover:scale-110 ${language === 'en' ? 'grayscale-0 ring-2 ring-stone-800 ring-offset-2' : 'grayscale opacity-50 hover:grayscale-0 hover:opacity-100'}`} title="English">
+                  <img src="https://flagcdn.com/w80/gb.png" alt="English" className="w-8 h-6 object-cover rounded shadow-sm border border-stone-100" referrerPolicy="no-referrer" />
+                </button>
+                <button onClick={() => setLanguage('fr')} className={`transition-transform hover:scale-110 ${language === 'fr' ? 'grayscale-0 ring-2 ring-stone-800 ring-offset-2' : 'grayscale opacity-50 hover:grayscale-0 hover:opacity-100'}`} title="Français">
+                  <img src="https://flagcdn.com/w80/fr.png" alt="Français" className="w-8 h-6 object-cover rounded shadow-sm border border-stone-100" referrerPolicy="no-referrer" />
+                </button>
+                <button onClick={() => setLanguage('es')} className={`transition-transform hover:scale-110 ${language === 'es' ? 'grayscale-0 ring-2 ring-stone-800 ring-offset-2' : 'grayscale opacity-50 hover:grayscale-0 hover:opacity-100'}`} title="Español">
+                  <img src="https://flagcdn.com/w80/es.png" alt="Español" className="w-8 h-6 object-cover rounded shadow-sm border border-stone-100" referrerPolicy="no-referrer" />
                 </button>
               </div>
               <div className="w-full relative group hidden lg:block">
@@ -1196,7 +1213,7 @@ const App: React.FC = () => {
                       disabled={isUploadingHeader}
                       className="w-full bg-stone-100 text-stone-600 text-[9px] font-bold py-1 uppercase rounded hover:bg-stone-200 transition-colors border border-stone-200"
                     >
-                      {isUploadingHeader ? `Caricamento ${uploadProgress}%` : 'Cambia Logo'}
+                      {isUploadingHeader ? `Caricamento ${uploadProgress}%` : t.changeLogo}
                     </button>
                     <input 
                       type="file" 
@@ -1209,25 +1226,25 @@ const App: React.FC = () => {
                 )}
               </div>
               <div className="text-[11px] uppercase font-bold tracking-widest text-stone-500 border-y border-stone-200 py-3 text-center mb-4">
-                {new Date().toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                {new Date().toLocaleDateString(language === 'it' ? 'it-IT' : language === 'en' ? 'en-GB' : language === 'fr' ? 'fr-FR' : 'es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
 
               {user && (
                 <div className="mb-6 bg-stone-100 p-2 rounded-lg border border-stone-200">
-                  <p className="text-[10px] uppercase font-bold text-stone-500 mb-2 px-1">Modalità di Visione</p>
+                  <p className="text-[10px] uppercase font-bold text-stone-500 mb-2 px-1">{t.viewMode}</p>
                   <div className="flex flex-col gap-1">
                     <button 
                       onClick={() => { setViewMode('PRIORITY'); setIsSidebarOpen(false); }}
                       className={`text-[11px] font-bold py-2 px-3 rounded transition-all text-left flex items-center justify-between ${viewMode === 'PRIORITY' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}
                     >
-                      I miei contatti
+                      {t.myContacts}
                       {viewMode === 'PRIORITY' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>}
                     </button>
                     <button 
                       onClick={() => { setViewMode('CHRONOLOGICAL'); setIsSidebarOpen(false); }}
                       className={`text-[11px] font-bold py-2 px-3 rounded transition-all text-left flex items-center justify-between ${viewMode === 'CHRONOLOGICAL' ? 'bg-stone-800 text-white' : 'text-stone-600 hover:bg-stone-200'}`}
                     >
-                      Visualizza tutti
+                      {t.viewAll}
                       {viewMode === 'CHRONOLOGICAL' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>}
                     </button>
                   </div>
@@ -1235,7 +1252,7 @@ const App: React.FC = () => {
               )}
 
               <nav className="flex flex-col space-y-1">
-                <button onClick={() => { setSelectedCategory('All'); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>Home Page</button>
+                <button onClick={() => { setSelectedCategory('All'); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.homePage}</button>
                 
                 {CATEGORIES.includes('Oggi parliamo di...') && (
                   <button 
@@ -1243,7 +1260,7 @@ const App: React.FC = () => {
                     style={navStyles} 
                     className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'Oggi parliamo di...' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-blue-500'}`}
                   >
-                    Oggi parliamo di...
+                    {t.categories['Oggi parliamo di...']}
                   </button>
                 )}
 
@@ -1251,7 +1268,7 @@ const App: React.FC = () => {
                   .filter(cat => cat !== 'Oggi parliamo di...')
                   .sort((a, b) => a.localeCompare(b))
                   .map(cat => (
-                    <button key={cat} onClick={() => { setSelectedCategory(cat); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{cat}</button>
+                    <button key={cat} onClick={() => { setSelectedCategory(cat); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.categories[cat] || cat}</button>
                   ))}
               </nav>
             </aside>
@@ -1283,6 +1300,8 @@ const App: React.FC = () => {
                         onClick={setSelectedArticle} 
                         onLike={() => handleLike(article.id)}
                         currentUserId={user?.id}
+                        t={t}
+                        language={language}
                       />
                     ))}
                     {visibleArticles.length < filteredArticles.length && (
@@ -1293,7 +1312,7 @@ const App: React.FC = () => {
                   </>
                 ) : (
                   <div className="py-20 text-center text-stone-400 newspaper-font italic text-xl">
-                    Nessuna opinione trovata.
+                    {t.noOpinionsFound}
                   </div>
                 )}
               </div>
@@ -1301,13 +1320,13 @@ const App: React.FC = () => {
 
             <aside className="lg:col-span-3 space-y-8 lg:border-l border-stone-200 lg:pl-6 text-center order-2 lg:order-3">
               <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
-                <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">Il Tuo Profilo</h3>
+                <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">{t.yourProfile}</h3>
                 {user ? (
                   <>
                     <div 
                       className="cursor-pointer group mb-4" 
                       onClick={openProfileModal}
-                      title="Modifica Profilo"
+                      title={t.yourProfile}
                     >
                       <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-2 mx-auto transition-all" alt="Profile" referrerPolicy="no-referrer" />
                       <h4 className="text-lg font-bold newspaper-font mb-1 group-hover:text-red-600 transition-colors">{user.firstName} {user.lastName}</h4>
@@ -1318,7 +1337,7 @@ const App: React.FC = () => {
                       onClick={() => setIsMessagesModalOpen(true)}
                       className="w-full mb-3 bg-stone-800 text-white text-[10px] font-black py-3 uppercase rounded shadow hover:bg-stone-700 transition-colors flex items-center justify-center gap-2"
                     >
-                      Messaggi
+                      {t.messages}
                       {unreadMessagesCount > 0 && (
                         <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full animate-pulse">
                           {unreadMessagesCount}
@@ -1330,7 +1349,7 @@ const App: React.FC = () => {
                       onClick={() => setIsContactsModalOpen(true)}
                       className="w-full mb-3 bg-stone-100 text-stone-800 text-[10px] font-black py-3 uppercase rounded shadow hover:bg-stone-200 transition-colors border border-stone-200"
                     >
-                      Contatti ({contacts.filter(c => c.status === ContattoStatus.ACCEPTED).length})
+                      {t.contacts} ({contacts.filter(c => c.status === ContattoStatus.ACCEPTED).length})
                     </button>
 
                     {/* Pulsante Inserimento Articolo per AUTHOR e ADMIN */}
@@ -1339,14 +1358,14 @@ const App: React.FC = () => {
                         onClick={() => setIsNewArticleModalOpen(true)}
                         className="w-full mb-3 bg-red-600 text-white text-[10px] font-black py-3 uppercase rounded shadow hover:bg-red-700 transition-colors"
                       >
-                        Nuovo
+                        {t.newArticleBtn}
                       </button>
                     )}
 
-                    <button onClick={() => supabase.auth.signOut()} className="w-full bg-stone-100 text-stone-900 text-[10px] font-black py-2 uppercase rounded hover:bg-stone-200">Esci</button>
+                    <button onClick={() => supabase.auth.signOut()} className="w-full bg-stone-100 text-stone-900 text-[10px] font-black py-2 uppercase rounded hover:bg-stone-200">{t.logout}</button>
                   </>
                 ) : (
-                  <button onClick={() => { setAuthMode('LOGIN'); setIsAuthModalOpen(true); }} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded hover:bg-stone-700 transition-colors">Accedi / Iscriviti</button>
+                  <button onClick={() => { setAuthMode('LOGIN'); setIsAuthModalOpen(true); }} className="w-full bg-stone-900 text-white py-4 text-xs font-black uppercase tracking-widest rounded hover:bg-stone-700 transition-colors">{t.auth.login} / {t.auth.register}</button>
                 )}
               </section>
 
@@ -1372,30 +1391,30 @@ const App: React.FC = () => {
             {authMode !== 'VERIFY' ? (
               <>
                 <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
-                  {authMode === 'LOGIN' ? 'Bentornato' : 'Unisciti a Noi'}
+                  {authMode === 'LOGIN' ? t.auth.welcomeBack : t.auth.joinUs}
                 </h2>
-                <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">La Voce del Tam Tam</p>
+                <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">{t.auth.voiceOfTamTam}</p>
                 
                 <form onSubmit={handleAuth} className="space-y-4">
                   {authMode === 'REGISTER' && (
                     <div className="grid grid-cols-2 gap-3">
-                      <input required placeholder="Nome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={firstName} onChange={e => setFirstName(e.target.value)} />
-                      <input required placeholder="Cognome" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={lastName} onChange={e => setLastName(e.target.value)} />
+                      <input required placeholder={t.auth.firstName} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                      <input required placeholder={t.auth.lastName} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={lastName} onChange={e => setLastName(e.target.value)} />
                       <input required type="date" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={birthDate} onChange={e => setBirthDate(e.target.value)} />
-                      <input required type="email" placeholder="Email" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-                      <input required type="password" placeholder="Password" className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
+                      <input required type="email" placeholder={t.auth.email} className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                      <input required type="password" placeholder={t.auth.password} className="col-span-2 w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
                       
                       <div className="col-span-2 space-y-3 mt-4 px-1">
                         <div className="flex items-start gap-3">
                           <input type="checkbox" id="privacy" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={privacyAccepted} onChange={(e) => setPrivacyAccepted(e.target.checked)} />
                           <label htmlFor="privacy" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
-                            Accetto la <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/privacy.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a> del sito.
+                            {t.auth.privacy} <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/privacy.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a>.
                           </label>
                         </div>
                         <div className="flex items-start gap-3">
                           <input type="checkbox" id="contract" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={contractAccepted} onChange={(e) => setContractAccepted(e.target.checked)} />
                           <label htmlFor="contract" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
-                            Accetto i termini del <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/contratto.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
+                            {t.auth.contract} <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/contratto.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
                           </label>
                         </div>
                       </div>
@@ -1403,16 +1422,16 @@ const App: React.FC = () => {
                   )}
                   {authMode === 'LOGIN' && (
                     <>
-                      <input required type="email" placeholder="Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                      <input required type="email" placeholder={t.auth.email} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
                       <div className="space-y-1">
-                        <input required type="password" placeholder="Password" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
+                        <input required type="password" placeholder={t.auth.password} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authPassword} onChange={e => setAuthPassword(e.target.value)} />
                         <div className="text-right">
                           <button 
                             type="button" 
                             onClick={() => setAuthMode('FORGOT_PASSWORD')}
                             className="text-[10px] font-bold uppercase text-stone-400 hover:text-stone-800 tracking-widest"
                           >
-                            Password dimenticata?
+                            {t.auth.forgotPasswordQuestion}
                           </button>
                         </div>
                       </div>
@@ -1421,19 +1440,19 @@ const App: React.FC = () => {
                   {authMode === 'FORGOT_PASSWORD' && (
                     <div className="space-y-4">
                       <p className="text-xs text-stone-500 font-serif text-center leading-relaxed">
-                        Inserisci la tua email per ricevere un link di ripristino della password.
+                        {t.auth.forgotPasswordInstructions}
                       </p>
-                      <input required type="email" placeholder="Email" className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                      <input required type="email" placeholder={t.auth.email} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
                     </div>
                   )}
                   {authError && <div className="bg-red-50 border-l-4 border-red-500 p-3"><p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p></div>}
                   <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
-                    {isGeneratingAI ? 'CARICAMENTO...' : (authMode === 'LOGIN' ? 'ACCEDI' : authMode === 'FORGOT_PASSWORD' ? 'INVIA LINK' : 'REGISTRATI')}
+                    {isGeneratingAI ? t.auth.loadingAuth : (authMode === 'LOGIN' ? t.auth.login : authMode === 'FORGOT_PASSWORD' ? t.auth.sendLink : t.auth.register)}
                   </button>
                 </form>
                 <div className="mt-8 pt-6 border-t border-stone-100 text-center">
                   <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
-                    {authMode === 'LOGIN' ? 'Nuovo utente? Registrati' : authMode === 'FORGOT_PASSWORD' ? 'Torna al Login' : 'Hai un account? Accedi'}
+                    {authMode === 'LOGIN' ? t.auth.newUserRegistration : authMode === 'FORGOT_PASSWORD' ? t.auth.backToLogin : t.auth.haveAccountLogin}
                   </button>
                 </div>
               </>
@@ -1462,12 +1481,12 @@ const App: React.FC = () => {
       {isNewArticleModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
           <div className="bg-white p-8 md:p-12 max-w-2xl w-full border-t-[12px] border-red-600 shadow-2xl rounded-xl overflow-y-auto max-h-[90vh]">
-            <p className="text-center text-[13.5px] text-stone-400 uppercase font-black mb-10 tracking-widest">Condividi la tua opinione con il mondo</p>
+            <p className="text-center text-[13.5px] text-stone-400 uppercase font-black mb-10 tracking-widest">{t.shareStory}</p>
             
             <form onSubmit={handleCreateArticle} className="space-y-4">
               <input 
                 required 
-                placeholder="Titolo" 
+                placeholder={t.newArticle.title} 
                 className="w-full p-4 border-2 border-stone-100 rounded-lg text-lg font-bold newspaper-font" 
                 value={newTitle} 
                 onChange={e => setNewTitle(e.target.value)} 
@@ -1488,13 +1507,13 @@ const App: React.FC = () => {
                   })
                   .sort((a, b) => a.localeCompare(b))
                   .map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
+                    <option key={cat} value={cat}>{t.categories[cat] || cat}</option>
                   ))}
                 </select>
                 <div className="space-y-2">
                   <div className="relative flex items-center">
                     <input 
-                      placeholder="URL Immagine, Video o Social (YouTube, IG, FB, TikTok)" 
+                      placeholder={t.newArticle.imageUrl} 
                       className="w-full p-3 pr-12 border-2 border-stone-100 rounded-lg text-sm" 
                       value={newImageUrl} 
                       onChange={e => setNewImageUrl(e.target.value)} 
@@ -1764,7 +1783,7 @@ const App: React.FC = () => {
             <div className="p-4 sm:p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50">
               <div>
                 <div className="flex items-center justify-between mb-1 sm:mb-8">
-                  <h2 className="text-xl sm:text-2xl font-bold newspaper-font uppercase tracking-tighter">Messaggi Privati</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold newspaper-font uppercase tracking-tighter">{t.privateMessages}</h2>
                   <button 
                     onClick={() => {
                       fetchMessages();
@@ -1776,7 +1795,7 @@ const App: React.FC = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
                   </button>
                 </div>
-                <p className="text-[9px] text-stone-400 uppercase font-black tracking-widest">Comunicazione sicura tra utenti</p>
+                <p className="text-[9px] text-stone-400 uppercase font-black tracking-widest">{t.secureCommunication}</p>
               </div>
               <button onClick={() => { setIsMessagesModalOpen(false); setSelectedChatUserId(null); }} className="text-2xl hover:text-red-600 transition-colors">✕</button>
             </div>
@@ -1788,7 +1807,7 @@ const App: React.FC = () => {
                 w-full lg:w-1/3 border-r border-stone-100 overflow-y-auto bg-stone-50/50 transition-all duration-300
               `}>
                 <div className="p-4">
-                  <h3 className="text-[10px] font-black uppercase text-stone-400 mb-4 tracking-widest px-2">Conversazioni</h3>
+                  <h3 className="text-[10px] font-black uppercase text-stone-400 mb-4 tracking-widest px-2">{t.conversations}</h3>
                   <div className="space-y-1">
                     {contacts.filter(c => c.status === ContattoStatus.ACCEPTED).map(contact => {
                       const otherUserId = contact.senderId === user.id ? contact.receiverId : contact.senderId;
@@ -1831,10 +1850,10 @@ const App: React.FC = () => {
                             </div>
                             {lastMessage ? (
                               <p className={`text-[10px] truncate ${hasUnread ? 'font-black text-stone-800' : 'text-stone-400'}`}>
-                                {lastMessage.senderId === user.id ? 'Tu: ' : ''}{lastMessage.content}
+                                {lastMessage.senderId === user.id ? `${t.you}: ` : ''}{lastMessage.content}
                               </p>
                             ) : (
-                              <p className="text-[10px] text-stone-300 italic">Nessun messaggio</p>
+                              <p className="text-[10px] text-stone-300 italic">{t.noMessages}</p>
                             )}
                           </div>
                         </button>
@@ -2162,6 +2181,8 @@ const App: React.FC = () => {
               comments={selectedArticle.comments} 
               currentUser={user} 
               onAddComment={(content) => handleAddComment(selectedArticle.id, content)} 
+              t={t}
+              language={language}
             />
           </div>
         </div>
@@ -2210,7 +2231,7 @@ const App: React.FC = () => {
         className={`fixed bottom-8 right-8 z-[100] w-12 h-12 bg-stone-900 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:bg-stone-700 hover:scale-110 active:scale-90 ${
           showScrollTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'
         }`}
-        title="Torna in alto"
+        title={t.backToTop}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
       </button>
