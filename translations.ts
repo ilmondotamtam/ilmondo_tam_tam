@@ -117,6 +117,8 @@ export const translations: Record<Language, Translations> = {
       'Curiosità': 'Curiosità',
       'Risate': 'Risate',
       'Città e paesi': 'Città e paesi',
+      'Canzoni': 'Canzoni',
+      'Politica': 'Politica',
       'Oggi parliamo di...': 'Oggi parliamo di...'
     },
     auth: {
@@ -205,6 +207,8 @@ export const translations: Record<Language, Translations> = {
       'Curiosità': 'Curiosities',
       'Risate': 'Laughter',
       'Città e paesi': 'Cities and countries',
+      'Canzoni': 'Songs',
+      'Politica': 'Politics',
       'Oggi parliamo di...': 'Today we talk about...'
     },
     auth: {
@@ -293,6 +297,8 @@ export const translations: Record<Language, Translations> = {
       'Curiosità': 'Curiosités',
       'Risate': 'Rire',
       'Città e paesi': 'Villes et pays',
+      'Canzoni': 'Chansons',
+      'Politica': 'Politique',
       'Oggi parliamo di...': 'Aujourd\'hui nous parlons de...'
     },
     auth: {
@@ -381,6 +387,8 @@ export const translations: Record<Language, Translations> = {
       'Curiosità': 'Curiosidades',
       'Risate': 'Risas',
       'Città e paesi': 'Ciudades y países',
+      'Canzoni': 'Canciones',
+      'Politica': 'Política',
       'Oggi parliamo di...': 'Hoy hablamos de...'
     },
     auth: {
