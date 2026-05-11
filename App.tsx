@@ -19,8 +19,9 @@ const App: React.FC = () => {
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD'>('LOGIN');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
+  const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'PRIORITY' | 'CHRONOLOGICAL'>('PRIORITY');
+  const [viewMode, setViewMode] = useState<'PRIORITY' | 'CHRONOLOGICAL'>('CHRONOLOGICAL');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -99,10 +100,15 @@ const App: React.FC = () => {
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const filteredArticles = useMemo(() => {
-    return selectedCategory === 'All' 
-      ? articles 
-      : articles.filter(a => a.category === selectedCategory);
-  }, [articles, selectedCategory]);
+    let result = articles;
+    if (selectedAuthorId) {
+      result = result.filter(a => a.authorId === selectedAuthorId);
+    }
+    if (selectedCategory !== 'All') {
+      result = result.filter(a => a.category === selectedCategory);
+    }
+    return result;
+  }, [articles, selectedCategory, selectedAuthorId]);
 
   const visibleArticles = useMemo(() => {
     return filteredArticles.slice(0, visibleCount);
@@ -110,7 +116,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setVisibleCount(30);
-  }, [selectedCategory]);
+  }, [selectedCategory, selectedAuthorId]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1252,13 +1258,13 @@ const App: React.FC = () => {
               )}
 
               <nav className="flex flex-col space-y-1">
-                <button onClick={() => { setSelectedCategory('All'); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.homePage}</button>
+                <button onClick={() => { setSelectedCategory('All'); setSelectedAuthorId(null); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' && !selectedAuthorId ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.homePage}</button>
                 
                 {CATEGORIES.includes('Oggi parliamo di...') && (
                   <button 
-                    onClick={() => { setSelectedCategory('Oggi parliamo di...'); setIsSidebarOpen(false); }} 
+                    onClick={() => { setSelectedCategory('Oggi parliamo di...'); setSelectedAuthorId(null); setIsSidebarOpen(false); }} 
                     style={navStyles} 
-                    className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'Oggi parliamo di...' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-blue-500'}`}
+                    className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'Oggi parliamo di...' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}
                   >
                     {t.categories['Oggi parliamo di...']}
                   </button>
@@ -1268,7 +1274,7 @@ const App: React.FC = () => {
                   .filter(cat => cat !== 'Oggi parliamo di...')
                   .sort((a, b) => a.localeCompare(b))
                   .map(cat => (
-                    <button key={cat} onClick={() => { setSelectedCategory(cat); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.categories[cat] || cat}</button>
+                    <button key={cat} onClick={() => { setSelectedCategory(cat); setSelectedAuthorId(null); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.categories[cat] || cat}</button>
                   ))}
               </nav>
             </aside>
@@ -1277,13 +1283,13 @@ const App: React.FC = () => {
               {/* Pulsanti Rapidi Categorie */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button 
-                  onClick={() => setSelectedCategory('Oggi parliamo di...')}
+                  onClick={() => { setSelectedCategory('Oggi parliamo di...'); setSelectedAuthorId(null); }}
                   className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all hover:bg-stone-800 hover:text-white flex items-center justify-center text-center rounded-md ${selectedCategory === 'Oggi parliamo di...' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-800'}`}
                 >
                   Oggi parliamo di...
                 </button>
                 <button 
-                  onClick={() => setSelectedCategory('Opinioni')}
+                  onClick={() => { setSelectedCategory('Opinioni'); setSelectedAuthorId(null); }}
                   className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all hover:bg-stone-800 hover:text-white flex items-center justify-center text-center rounded-md ${selectedCategory === 'Opinioni' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-800'}`}
                 >
                   Opinioni
@@ -1291,6 +1297,30 @@ const App: React.FC = () => {
               </div>
 
               <div className="space-y-4">
+                {selectedAuthorId && (
+                  <div className="bg-stone-100 p-4 rounded-lg flex items-center justify-between border-l-4 border-stone-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-stone-200 overflow-hidden">
+                        <img 
+                          src={`https://api.dicebear.com/7.x/miniavs/svg?seed=${articles.find(a => a.authorId === selectedAuthorId)?.authorName || 'Author'}`} 
+                          alt="Author"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-widest text-stone-500">Autore selezionato</p>
+                        <p className="text-lg font-bold newspaper-font">{articles.find(a => a.authorId === selectedAuthorId)?.authorName}</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedAuthorId(null)}
+                      className="text-stone-500 hover:text-red-600 p-2 transition-colors"
+                      title="Rimuovi filtro autore"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                )}
                 {visibleArticles.length > 0 ? (
                   <>
                     {visibleArticles.map(article => (
@@ -1298,6 +1328,7 @@ const App: React.FC = () => {
                         key={article.id} 
                         article={article} 
                         onClick={setSelectedArticle} 
+                        onAuthorClick={setSelectedAuthorId}
                         onLike={() => handleLike(article.id)}
                         currentUserId={user?.id}
                         t={t}
@@ -2158,7 +2189,15 @@ const App: React.FC = () => {
               <span className="text-xs font-black text-red-600 uppercase tracking-[0.3em]">{selectedArticle.category}</span>
               <h2 className="text-4xl md:text-6xl font-bold newspaper-font my-6 leading-[1.1]">{selectedArticle.title}</h2>
               <div className="flex justify-center gap-8 text-stone-400 text-sm italic font-serif border-y border-stone-100 py-3">
-                <span>Di {selectedArticle.authorName}</span>
+                <span 
+                  className="cursor-pointer hover:text-red-600 transition-colors"
+                  onClick={() => {
+                    setSelectedAuthorId(selectedArticle.authorId);
+                    setSelectedArticle(null);
+                  }}
+                >
+                  Di {selectedArticle.authorName}
+                </span>
                 <span>{new Date(selectedArticle.timestamp).toLocaleDateString('it-IT')}</span>
               </div>
             </div>

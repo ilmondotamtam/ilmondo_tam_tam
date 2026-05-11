@@ -7,18 +7,24 @@ import { Translations } from '../translations';
 interface ArticleCardProps {
   article: Article;
   onClick: (article: Article) => void;
+  onAuthorClick?: (authorId: string) => void;
   onLike?: () => void;
   currentUserId?: string;
   t: Translations;
   language?: string;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLike, currentUserId, t, language = 'it' }) => {
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onAuthorClick, onLike, currentUserId, t, language = 'it' }) => {
   const liked = currentUserId ? article.likedBy?.includes(currentUserId) : false;
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onLike) onLike();
+  };
+
+  const handleAuthorClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onAuthorClick) onAuthorClick(article.authorId);
   };
 
   const handleShare = async (e: React.MouseEvent) => {
@@ -57,7 +63,10 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
       {/* Post Header */}
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-stone-100 border border-stone-200 overflow-hidden">
+          <div 
+            className="w-10 h-10 rounded-full bg-stone-100 border border-stone-200 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={handleAuthorClick}
+          >
             <img 
               src={`https://api.dicebear.com/7.x/miniavs/svg?seed=${article.authorName}`} 
               alt={article.authorName}
@@ -65,8 +74,11 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onLi
               referrerPolicy="no-referrer"
             />
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-stone-900 leading-tight">
+          <div 
+            className="cursor-pointer group"
+            onClick={handleAuthorClick}
+          >
+            <h3 className="text-sm font-bold text-stone-900 leading-tight group-hover:text-red-600 transition-colors">
               {article.authorName}
             </h3>
             <div className="flex items-center gap-2 text-[10px] text-stone-500 uppercase font-bold tracking-tight">
