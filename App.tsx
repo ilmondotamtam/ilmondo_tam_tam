@@ -16,7 +16,7 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD'>('LOGIN');
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD'>('LOGIN');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
@@ -35,9 +35,25 @@ const App: React.FC = () => {
     };
   }, [isSidebarOpen]);
 
+  useEffect(() => {
+    // Gestione link recupero password
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash && (hash.includes('type=recovery') || hash.includes('type=signup'))) {
+        setAuthMode('RESET_PASSWORD');
+        setIsAuthModalOpen(true);
+      }
+    };
+
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   // Form State Auth
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -896,6 +912,20 @@ const App: React.FC = () => {
         if (error) throw error;
         showToast("Email di recupero inviata! Controlla la tua posta.");
         setAuthMode('LOGIN');
+      } else if (authMode === 'RESET_PASSWORD') {
+        if (authPassword !== authConfirmPassword) {
+          throw new Error(language === 'it' ? 'Le password non coincidono.' : 'Passwords do not match.');
+        }
+        if (authPassword.length < 6) {
+          throw new Error(language === 'it' ? 'La password deve essere di almeno 6 caratteri.' : 'Password must be at least 6 characters.');
+        }
+        const { error } = await supabase.auth.updateUser({ password: authPassword });
+        if (error) throw error;
+        showToast(language === 'it' ? "Password aggiornata con successo!" : "Password updated successfully!");
+        setAuthMode('LOGIN');
+        // Pulisce i campi password
+        setAuthPassword('');
+        setAuthConfirmPassword('');
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
@@ -1422,7 +1452,7 @@ const App: React.FC = () => {
             {authMode !== 'VERIFY' ? (
               <>
                 <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
-                  {authMode === 'LOGIN' ? t.auth.welcomeBack : t.auth.joinUs}
+                  {authMode === 'LOGIN' ? t.auth.welcomeBack : authMode === 'RESET_PASSWORD' ? t.auth.resetPassword : t.auth.joinUs}
                 </h2>
                 <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">{t.auth.voiceOfTamTam}</p>
                 
@@ -1460,7 +1490,7 @@ const App: React.FC = () => {
                           <button 
                             type="button" 
                             onClick={() => setAuthMode('FORGOT_PASSWORD')}
-                            className="text-[10px] font-bold uppercase text-stone-400 hover:text-stone-800 tracking-widest"
+                            className="text-[12px] font-bold uppercase text-red-600 hover:text-red-800 tracking-widest underline underline-offset-4 decoration-2 decoration-red-200 hover:decoration-red-400 transition-all"
                           >
                             {t.auth.forgotPasswordQuestion}
                           </button>
@@ -1476,14 +1506,34 @@ const App: React.FC = () => {
                       <input required type="email" placeholder={t.auth.email} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
                     </div>
                   )}
+                  {authMode === 'RESET_PASSWORD' && (
+                    <div className="space-y-4">
+                      <input 
+                        required 
+                        type="password" 
+                        placeholder={t.auth.newPassword} 
+                        className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
+                        value={authPassword} 
+                        onChange={e => setAuthPassword(e.target.value)} 
+                      />
+                      <input 
+                        required 
+                        type="password" 
+                        placeholder={t.auth.confirmPassword} 
+                        className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
+                        value={authConfirmPassword} 
+                        onChange={e => setAuthConfirmPassword(e.target.value)} 
+                      />
+                    </div>
+                  )}
                   {authError && <div className="bg-red-50 border-l-4 border-red-500 p-3"><p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p></div>}
                   <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
-                    {isGeneratingAI ? t.auth.loadingAuth : (authMode === 'LOGIN' ? t.auth.login : authMode === 'FORGOT_PASSWORD' ? t.auth.sendLink : t.auth.register)}
+                    {isGeneratingAI ? t.auth.loadingAuth : (authMode === 'LOGIN' ? t.auth.login : authMode === 'FORGOT_PASSWORD' ? t.auth.sendLink : authMode === 'RESET_PASSWORD' ? t.auth.updatePassword : t.auth.register)}
                   </button>
                 </form>
                 <div className="mt-8 pt-6 border-t border-stone-100 text-center">
-                  <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-[10px] font-bold uppercase text-stone-500 hover:text-stone-900 tracking-widest">
-                    {authMode === 'LOGIN' ? t.auth.newUserRegistration : authMode === 'FORGOT_PASSWORD' ? t.auth.backToLogin : t.auth.haveAccountLogin}
+                  <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="w-full text-sm font-black uppercase text-stone-900 hover:bg-stone-900 hover:text-white tracking-widest py-3 px-6 border-2 border-stone-900 rounded-lg transition-all shadow-sm active:scale-95">
+                    {authMode === 'LOGIN' ? t.auth.newUserRegistration : (authMode === 'FORGOT_PASSWORD' || authMode === 'RESET_PASSWORD') ? t.auth.backToLogin : t.auth.haveAccountLogin}
                   </button>
                 </div>
               </>
@@ -1503,7 +1553,11 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
-            <button onClick={() => setIsAuthModalOpen(false)} className="mt-4 w-full text-stone-300 text-[9px] font-bold uppercase hover:text-red-600">Chiudi</button>
+            <button onClick={() => setIsAuthModalOpen(false)} className="mt-6 w-full text-blue-600 text-xs font-black uppercase hover:text-blue-800 tracking-[0.2em] transition-all flex items-center justify-center gap-2 group">
+              <span className="w-8 h-[1px] bg-blue-100 group-hover:bg-blue-300 transition-all"></span>
+              {t.close}
+              <span className="w-8 h-[1px] bg-blue-100 group-hover:bg-blue-300 transition-all"></span>
+            </button>
           </div>
         </div>
       )}
