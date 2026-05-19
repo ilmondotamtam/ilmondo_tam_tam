@@ -39,10 +39,6 @@ export interface Translations {
     backToLogin: string;
     haveAccountLogin: string;
     loadingAuth: string;
-    resetPassword: string;
-    newPassword: string;
-    confirmPassword: string;
-    updatePassword: string;
   };
   article: {
     author: string;
@@ -147,11 +143,7 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: 'Nuovo utente? Registrati',
       backToLogin: 'Torna al Login',
       haveAccountLogin: 'Hai un account? Accedi',
-      loadingAuth: 'CARICAMENTO...',
-      resetPassword: 'Reimposta Password',
-      newPassword: 'Nuova Password',
-      confirmPassword: 'Conferma Password',
-      updatePassword: 'AGGIORNA PASSWORD'
+      loadingAuth: 'CARICAMENTO...'
     },
     article: {
       author: 'Autore',
@@ -241,11 +233,7 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: 'New user? Register',
       backToLogin: 'Back to Login',
       haveAccountLogin: 'Have an account? Login',
-      loadingAuth: 'LOADING...',
-      resetPassword: 'Reset Password',
-      newPassword: 'New Password',
-      confirmPassword: 'Confirm Password',
-      updatePassword: 'UPDATE PASSWORD'
+      loadingAuth: 'LOADING...'
     },
     article: {
       author: 'Author',
@@ -335,11 +323,7 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: 'Nouvel utilisateur ? S\'inscrire',
       backToLogin: 'Retour à la connexion',
       haveAccountLogin: 'Vous avez déjà un compte ? Connexion',
-      loadingAuth: 'CHARGEMENT...',
-      resetPassword: 'Réinitialiser le mot de passe',
-      newPassword: 'Nouveau mot de passe',
-      confirmPassword: 'Confirmer le mot de passe',
-      updatePassword: 'METTRE À JOUR LE MOT DE PASSE'
+      loadingAuth: 'CHARGEMENT...'
     },
     article: {
       author: 'Auteur',
@@ -429,11 +413,7 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: '¿Nuevo usuario? Regístrese',
       backToLogin: 'Volver al inicio de sesión',
       haveAccountLogin: '¿Ya tiene una cuenta? Acceso',
-      loadingAuth: 'CARGANDO...',
-      resetPassword: 'Restablecer contraseña',
-      newPassword: 'Nueva contraseña',
-      confirmPassword: 'Confirmar contraseña',
-      updatePassword: 'ACTUALIZAR CONTRASEÑA'
+      loadingAuth: 'CARGANDO...'
     },
     article: {
       author: 'Autor',

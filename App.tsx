@@ -16,7 +16,7 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD'>('LOGIN');
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD'>('LOGIN');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
@@ -35,25 +35,9 @@ const App: React.FC = () => {
     };
   }, [isSidebarOpen]);
 
-  useEffect(() => {
-    // Gestione link recupero password
-    const handleHashChange = () => {
-      const hash = window.location.hash;
-      if (hash && (hash.includes('type=recovery') || hash.includes('type=signup'))) {
-        setAuthMode('RESET_PASSWORD');
-        setIsAuthModalOpen(true);
-      }
-    };
-
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
   // Form State Auth
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authConfirmPassword, setAuthConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -92,7 +76,7 @@ const App: React.FC = () => {
   const [profileBio, setProfileBio] = useState('');
   const [profileNewPassword, setProfileNewPassword] = useState('');
   const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
-  const [isPasswordChangeOpen, setIsPasswordChangeOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   // Form State Contacts
@@ -912,20 +896,6 @@ const App: React.FC = () => {
         if (error) throw error;
         showToast("Email di recupero inviata! Controlla la tua posta.");
         setAuthMode('LOGIN');
-      } else if (authMode === 'RESET_PASSWORD') {
-        if (authPassword !== authConfirmPassword) {
-          throw new Error(language === 'it' ? 'Le password non coincidono.' : 'Passwords do not match.');
-        }
-        if (authPassword.length < 6) {
-          throw new Error(language === 'it' ? 'La password deve essere di almeno 6 caratteri.' : 'Password must be at least 6 characters.');
-        }
-        const { error } = await supabase.auth.updateUser({ password: authPassword });
-        if (error) throw error;
-        showToast(language === 'it' ? "Password aggiornata con successo!" : "Password updated successfully!");
-        setAuthMode('LOGIN');
-        // Pulisce i campi password
-        setAuthPassword('');
-        setAuthConfirmPassword('');
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
@@ -950,8 +920,33 @@ const App: React.FC = () => {
     setProfileBio(user.bio || '');
     setProfileNewPassword('');
     setProfileConfirmPassword('');
-    setIsPasswordChangeOpen(false);
     setIsProfileModalOpen(true);
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsUpdatingProfile(true);
+    try {
+      if (profileNewPassword.length < 6) {
+        throw new Error('La password deve essere di almeno 6 caratteri.');
+      }
+      if (profileNewPassword !== profileConfirmPassword) {
+        throw new Error('Le password non coincidono.');
+      }
+      const { error } = await supabase.auth.updateUser({ password: profileNewPassword });
+      if (error) throw error;
+      
+      showToast("Password aggiornata correttamente!");
+      setProfileNewPassword('');
+      setProfileConfirmPassword('');
+      setIsPasswordModalOpen(false);
+    } catch (err: any) {
+      console.error("Password Update Error:", err);
+      showToast(err.message || "Errore durante l'aggiornamento della password", "error");
+    } finally {
+      setIsUpdatingProfile(false);
+    }
   };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -959,18 +954,6 @@ const App: React.FC = () => {
     if (!user) return;
     setIsUpdatingProfile(true);
     try {
-      // Update Password if provided
-      if (profileNewPassword) {
-        if (profileNewPassword.length < 6) {
-          throw new Error('La password deve essere di almeno 6 caratteri.');
-        }
-        if (profileNewPassword !== profileConfirmPassword) {
-          throw new Error('Le password non coincidono.');
-        }
-        const { error: pwdError } = await supabase.auth.updateUser({ password: profileNewPassword });
-        if (pwdError) throw pwdError;
-      }
-
       const { error } = await supabase
         .from('utenti')
         .update({
@@ -1452,7 +1435,7 @@ const App: React.FC = () => {
             {authMode !== 'VERIFY' ? (
               <>
                 <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
-                  {authMode === 'LOGIN' ? t.auth.welcomeBack : authMode === 'RESET_PASSWORD' ? t.auth.resetPassword : t.auth.joinUs}
+                  {authMode === 'LOGIN' ? t.auth.welcomeBack : t.auth.joinUs}
                 </h2>
                 <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">{t.auth.voiceOfTamTam}</p>
                 
@@ -1506,34 +1489,14 @@ const App: React.FC = () => {
                       <input required type="email" placeholder={t.auth.email} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
                     </div>
                   )}
-                  {authMode === 'RESET_PASSWORD' && (
-                    <div className="space-y-4">
-                      <input 
-                        required 
-                        type="password" 
-                        placeholder={t.auth.newPassword} 
-                        className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
-                        value={authPassword} 
-                        onChange={e => setAuthPassword(e.target.value)} 
-                      />
-                      <input 
-                        required 
-                        type="password" 
-                        placeholder={t.auth.confirmPassword} 
-                        className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
-                        value={authConfirmPassword} 
-                        onChange={e => setAuthConfirmPassword(e.target.value)} 
-                      />
-                    </div>
-                  )}
                   {authError && <div className="bg-red-50 border-l-4 border-red-500 p-3"><p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p></div>}
                   <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
-                    {isGeneratingAI ? t.auth.loadingAuth : (authMode === 'LOGIN' ? t.auth.login : authMode === 'FORGOT_PASSWORD' ? t.auth.sendLink : authMode === 'RESET_PASSWORD' ? t.auth.updatePassword : t.auth.register)}
+                    {isGeneratingAI ? t.auth.loadingAuth : (authMode === 'LOGIN' ? t.auth.login : authMode === 'FORGOT_PASSWORD' ? t.auth.sendLink : t.auth.register)}
                   </button>
                 </form>
                 <div className="mt-8 pt-6 border-t border-stone-100 text-center">
                   <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="w-full text-sm font-black uppercase text-stone-900 hover:bg-stone-900 hover:text-white tracking-widest py-3 px-6 border-2 border-stone-900 rounded-lg transition-all shadow-sm active:scale-95">
-                    {authMode === 'LOGIN' ? t.auth.newUserRegistration : (authMode === 'FORGOT_PASSWORD' || authMode === 'RESET_PASSWORD') ? t.auth.backToLogin : t.auth.haveAccountLogin}
+                    {authMode === 'LOGIN' ? t.auth.newUserRegistration : authMode === 'FORGOT_PASSWORD' ? t.auth.backToLogin : t.auth.haveAccountLogin}
                   </button>
                 </div>
               </>
@@ -2179,37 +2142,16 @@ const App: React.FC = () => {
                 <div className="pt-4 border-t border-stone-100">
                   <button 
                     type="button"
-                    onClick={() => setIsPasswordChangeOpen(!isPasswordChangeOpen)}
-                    className="w-full flex justify-between items-center py-2 group"
+                    onClick={() => {
+                      setIsProfileModalOpen(false);
+                      setProfileNewPassword('');
+                      setProfileConfirmPassword('');
+                      setIsPasswordModalOpen(true);
+                    }}
+                    className="w-full py-4 text-center bg-stone-50 border-2 border-stone-100 rounded-lg group hover:bg-stone-100 transition-all active:scale-[0.98]"
                   >
-                    <h4 className="text-[10px] font-black uppercase text-stone-900 tracking-[0.2em] group-hover:text-red-600 transition-colors">Cambia Password</h4>
-                    <span className={`text-stone-400 text-xs transition-transform duration-300 ${isPasswordChangeOpen ? 'rotate-180' : ''}`}>▼</span>
+                    <span className="text-[10px] font-black uppercase text-stone-600 tracking-[0.2em] group-hover:text-red-600 transition-colors">🔐 Cambia Password</span>
                   </button>
-                  
-                  {isPasswordChangeOpen && (
-                    <div className="space-y-4 mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div>
-                        <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Nuova Password</label>
-                        <input 
-                          type="password"
-                          className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
-                          value={profileNewPassword} 
-                          onChange={e => setProfileNewPassword(e.target.value)} 
-                          placeholder="Lascia vuoto per non cambiare"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Conferma Password</label>
-                        <input 
-                          type="password"
-                          className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm focus:border-stone-800 outline-none transition-colors" 
-                          value={profileConfirmPassword} 
-                          onChange={e => setProfileConfirmPassword(e.target.value)} 
-                          placeholder="Ripeti password"
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -2227,6 +2169,61 @@ const App: React.FC = () => {
                   className="flex-[2] bg-stone-900 text-white py-3 font-black uppercase tracking-widest text-[10px] rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all shadow-lg"
                 >
                   {isUpdatingProfile ? 'SALVATAGGIO...' : 'SALVA MODIFICHE'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cambio Password */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-[110] bg-black/80 flex justify-center items-center p-6 backdrop-blur-md">
+          <div className="bg-white p-8 md:p-12 max-w-md w-full border-t-[12px] border-stone-800 shadow-2xl rounded-xl">
+            <h2 className="text-2xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">Cambia Password</h2>
+            <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-8 tracking-widest">Proteggi il tuo account</p>
+            
+            <form onSubmit={handleUpdatePassword} className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black uppercase text-stone-400 mb-2 block tracking-widest">Nuova Password</label>
+                <input 
+                  required
+                  type="password"
+                  className="w-full p-4 border-2 border-stone-100 rounded-xl text-sm focus:border-stone-800 outline-none transition-all shadow-sm" 
+                  value={profileNewPassword} 
+                  onChange={e => setProfileNewPassword(e.target.value)} 
+                  placeholder="Minimo 6 caratteri"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-stone-400 mb-2 block tracking-widest">Conferma Password</label>
+                <input 
+                  required
+                  type="password"
+                  className="w-full p-4 border-2 border-stone-100 rounded-xl text-sm focus:border-stone-800 outline-none transition-all shadow-sm" 
+                  value={profileConfirmPassword} 
+                  onChange={e => setProfileConfirmPassword(e.target.value)} 
+                  placeholder="Ripeti la nuova password"
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 pt-4">
+                <button 
+                  disabled={isUpdatingProfile} 
+                  type="submit" 
+                  className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-xl hover:bg-stone-700 disabled:opacity-50 transition-all shadow-lg active:scale-[0.98]"
+                >
+                  {isUpdatingProfile ? 'AGGIORNAMENTO...' : 'AGGIORNA PASSWORD'}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setIsPasswordModalOpen(false);
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="w-full text-stone-400 py-2 font-bold uppercase tracking-widest text-[9px] hover:text-stone-900 transition-colors"
+                >
+                  Torna al Profilo
                 </button>
               </div>
             </form>
