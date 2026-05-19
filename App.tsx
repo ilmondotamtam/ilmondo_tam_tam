@@ -178,11 +178,20 @@ const App: React.FC = () => {
     };
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
+      console.log("Supabase Auth Event:", event);
+      
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordModalOpen(true);
+        setIsAuthModalOpen(false);
+      }
+
       if (session?.user) {
         // Sincronizziamo il profilo in background senza bloccare la UI
         syncUserProfile(session.user);
-        setIsAuthModalOpen(false);
+        if (event !== 'PASSWORD_RECOVERY') {
+          setIsAuthModalOpen(false);
+        }
       } else {
         setUser(null);
         setContacts([]);
@@ -890,8 +899,9 @@ const App: React.FC = () => {
         setIsAuthModalOpen(false);
         setIsGeneratingAI(false);
       } else if (authMode === 'FORGOT_PASSWORD') {
+        const resetPath = window.location.origin + (window.location.pathname === '/' ? '' : window.location.pathname);
         const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: `${resetPath}?action=reset_password`,
         });
         if (error) throw error;
         showToast("Email di recupero inviata! Controlla la tua posta.");
