@@ -1281,13 +1281,13 @@ const App: React.FC = () => {
               )}
 
               <nav className="flex flex-col space-y-1">
-                <button onClick={() => { setSelectedCategory('All'); setSelectedAuthorId(null); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' && !selectedAuthorId ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.homePage}</button>
+                <button onClick={() => { setSelectedCategory('All'); setSelectedAuthorId(null); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'All' && !selectedAuthorId ? 'text-green-600 border-l-4 border-l-green-600 pl-4 bg-white font-bold' : 'text-blue-600 hover:text-blue-800'}`}>{t.homePage}</button>
                 
                 {CATEGORIES.includes('Oggi parliamo di...') && (
                   <button 
                     onClick={() => { setSelectedCategory('Oggi parliamo di...'); setSelectedAuthorId(null); setIsSidebarOpen(false); }} 
                     style={navStyles} 
-                    className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'Oggi parliamo di...' ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}
+                    className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === 'Oggi parliamo di...' ? 'text-green-600 border-l-4 border-l-green-600 pl-4 bg-white font-bold' : 'text-red-600 hover:text-red-800'}`}
                   >
                     {t.categories['Oggi parliamo di...']}
                   </button>
@@ -1297,7 +1297,7 @@ const App: React.FC = () => {
                   .filter(cat => cat !== 'Oggi parliamo di...')
                   .sort((a, b) => a.localeCompare(b))
                   .map(cat => (
-                    <button key={cat} onClick={() => { setSelectedCategory(cat); setSelectedAuthorId(null); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-red-600 border-l-4 border-l-red-600 pl-4 bg-white' : 'text-stone-800'}`}>{t.categories[cat] || cat}</button>
+                    <button key={cat} onClick={() => { setSelectedCategory(cat); setSelectedAuthorId(null); setIsSidebarOpen(false); }} style={navStyles} className={`text-left py-2.5 px-2 text-sm uppercase tracking-tighter border-b border-stone-100 transition-all ${selectedCategory === cat ? 'text-green-600 border-l-4 border-l-green-600 pl-4 bg-white font-bold' : 'text-stone-800 hover:text-green-600'}`}>{t.categories[cat] || cat}</button>
                   ))}
               </nav>
             </aside>
@@ -1307,13 +1307,13 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button 
                   onClick={() => { setSelectedCategory('Oggi parliamo di...'); setSelectedAuthorId(null); }}
-                  className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all hover:bg-stone-800 hover:text-white flex items-center justify-center text-center rounded-md ${selectedCategory === 'Oggi parliamo di...' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-800'}`}
+                  className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all flex items-center justify-center text-center rounded-md ${selectedCategory === 'Oggi parliamo di...' ? 'bg-green-600 text-white' : 'bg-stone-100 text-stone-800 hover:text-green-600'}`}
                 >
                   Oggi parliamo di...
                 </button>
                 <button 
                   onClick={() => { setSelectedCategory('Opinioni'); setSelectedAuthorId(null); }}
-                  className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all hover:bg-stone-800 hover:text-white flex items-center justify-center text-center rounded-md ${selectedCategory === 'Opinioni' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-800'}`}
+                  className={`py-3 px-4 font-black uppercase text-xs sm:text-sm tracking-widest transition-all flex items-center justify-center text-center rounded-md ${selectedCategory === 'Opinioni' ? 'bg-green-600 text-white' : 'bg-stone-100 text-stone-800 hover:text-green-600'}`}
                 >
                   Opinioni
                 </button>
@@ -1970,9 +1970,9 @@ const App: React.FC = () => {
 
                         return filtered.map(msg => (
                           <div key={msg.id} className={`flex ${msg.senderId === user.id ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${msg.senderId === user.id ? 'bg-stone-800 text-white rounded-tr-none' : 'bg-blue-100 text-stone-800 border border-blue-200 rounded-tl-none'}`}>
+                            <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${msg.senderId === user.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-blue-100 text-stone-800 border border-blue-200 rounded-tl-none'}`}>
                               <p className="leading-relaxed">{msg.content}</p>
-                              <p className={`text-[9px] mt-1 text-right ${msg.senderId === user.id ? 'text-stone-300 opacity-60' : 'text-blue-950 font-bold'}`}>
+                              <p className={`text-[9px] mt-1 text-right ${msg.senderId === user.id ? 'text-blue-100/90' : 'text-blue-950 font-bold'}`}>
                                 {new Date(msg.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })} {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </p>
                             </div>
