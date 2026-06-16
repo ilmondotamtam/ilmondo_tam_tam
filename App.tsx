@@ -23,6 +23,8 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'PRIORITY' | 'CHRONOLOGICAL'>('CHRONOLOGICAL');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -107,8 +109,15 @@ const App: React.FC = () => {
     if (selectedCategory !== 'All') {
       result = result.filter(a => a.category === selectedCategory);
     }
+    if (searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(a => 
+        (a.title && a.title.toLowerCase().includes(query)) || 
+        (a.content && a.content.toLowerCase().includes(query))
+      );
+    }
     return result;
-  }, [articles, selectedCategory, selectedAuthorId]);
+  }, [articles, selectedCategory, selectedAuthorId, searchQuery]);
 
   const visibleArticles = useMemo(() => {
     return filteredArticles.slice(0, visibleCount);
@@ -116,7 +125,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setVisibleCount(30);
-  }, [selectedCategory, selectedAuthorId]);
+  }, [selectedCategory, selectedAuthorId, searchQuery]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1140,8 +1149,7 @@ const App: React.FC = () => {
       
       const { error } = await supabase
         .from('testata')
-        .update({ imma_testata: publicUrl })
-        .eq('id', 'header_image');
+        .upsert({ id: 'header_image', imma_testata: publicUrl });
 
       if (error) throw error;
       setHeaderImage(publicUrl);
@@ -1204,6 +1212,8 @@ const App: React.FC = () => {
                 onClick={() => setIsSidebarOpen(false)}
               />
             )}
+
+
 
             <aside className={`
               lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6 order-1 lg:order-1
@@ -1303,6 +1313,63 @@ const App: React.FC = () => {
             </aside>
 
             <div className="lg:col-span-6 space-y-6 order-3 lg:order-2">
+              {/* Global Search Bar (in alto al centro della colonna principale) */}
+              <div className="w-full bg-white border border-stone-200 p-4 shadow-md rounded-xl">
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setSearchQuery(searchInput);
+                  }}
+                  className="flex gap-2"
+                >
+                  <div className="relative flex-1">
+                    <input 
+                      type="text" 
+                      placeholder={t.searchArticlesPlaceHolder} 
+                      className="w-full p-3 pr-10 border-2 border-stone-200 rounded-lg text-sm font-sans focus:border-stone-800 outline-none transition-colors italic"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                    />
+                    {searchInput && (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setSearchInput('');
+                          setSearchQuery('');
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-800 transition-colors text-sm font-bold"
+                        title="Cancella ricerca"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <button 
+                    type="submit"
+                    className="bg-stone-800 text-white px-5 py-3 rounded-lg hover:bg-stone-700 transition-colors flex items-center justify-center border border-stone-800"
+                    title={language === 'it' ? 'Cerca' : 'Search'}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  </button>
+                </form>
+                {searchQuery && (
+                  <div className="mt-3 flex items-center justify-between text-xs text-stone-500 italic px-1 bg-stone-50 p-2 rounded border border-stone-100">
+                    <span>
+                      {language === 'it' ? `Risultati della ricerca per: "${searchQuery}"` : `Search results for: "${searchQuery}"`} ({filteredArticles.length})
+                    </span>
+                    <button 
+                      onClick={() => {
+                        setSearchInput('');
+                        setSearchQuery('');
+                      }}
+                      className="text-red-600 hover:underline font-bold"
+                    >
+                      {language === 'it' ? 'Azzera filtro' : 'Clear filter'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Pulsanti Rapidi Categorie */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button 

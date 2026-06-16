@@ -78,6 +78,7 @@ export interface Translations {
   noResults: string;
   you: string;
   noMessages: string;
+  searchArticlesPlaceHolder: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -169,7 +170,8 @@ export const translations: Record<Language, Translations> = {
       imageUrl: 'URL Immagine o Video',
       category: 'Categoria',
       submit: 'Pubblica Opinione'
-    }
+    },
+    searchArticlesPlaceHolder: 'Cerca...'
   },
   en: {
     homePage: 'Home Page',
@@ -259,7 +261,8 @@ export const translations: Record<Language, Translations> = {
       imageUrl: 'Image or Video URL',
       category: 'Category',
       submit: 'Publish Opinion'
-    }
+    },
+    searchArticlesPlaceHolder: 'Search...'
   },
   fr: {
     homePage: 'Page d\'accueil',
@@ -349,7 +352,8 @@ export const translations: Record<Language, Translations> = {
       imageUrl: 'URL Image ou Vidéo',
       category: 'Catégorie',
       submit: 'Publier l\'opinion'
-    }
+    },
+    searchArticlesPlaceHolder: 'Rechercher...'
   },
   es: {
     homePage: 'Página de inicio',
@@ -439,6 +443,7 @@ export const translations: Record<Language, Translations> = {
       imageUrl: 'URL del video o imagen',
       category: 'Categoría',
       submit: 'Publicar opinión'
-    }
+    },
+    searchArticlesPlaceHolder: 'Buscar...'
   },
 };

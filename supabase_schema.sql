@@ -159,6 +159,19 @@ CREATE TABLE IF NOT EXISTS public.testata (
     imma_testata TEXT NOT NULL
 );
 
+-- Abilita RLS per la tabella Testata
+ALTER TABLE public.testata ENABLE ROW LEVEL SECURITY;
+
+-- Politiche di sicurezza per Testata
+CREATE POLICY "Testata visibile a tutti" ON public.testata FOR SELECT USING (true);
+CREATE POLICY "Solo amministratori possono inserire ed aggiornare la testata" ON public.testata FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM public.utenti
+    WHERE utenti.id = auth.uid() 
+    AND utenti.role = 'ADMIN'
+  )
+);
+
 INSERT INTO public.testata (id, imma_testata) 
 VALUES ('header_image', 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?q=80&w=2070&auto=format&fit=crop')
 ON CONFLICT (id) DO NOTHING;
