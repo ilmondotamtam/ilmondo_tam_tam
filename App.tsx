@@ -98,6 +98,8 @@ const App: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showCenterScrollTop, setShowCenterScrollTop] = useState(false);
+  const centerColumnRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(30);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
@@ -125,7 +127,20 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setVisibleCount(30);
+    if (centerColumnRef.current) {
+      centerColumnRef.current.scrollTop = 0;
+    }
   }, [selectedCategory, selectedAuthorId, searchQuery]);
+
+  const handleCenterScroll = () => {
+    if (centerColumnRef.current) {
+      if (centerColumnRef.current.scrollTop > 100) {
+        setShowCenterScrollTop(true);
+      } else {
+        setShowCenterScrollTop(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -157,6 +172,9 @@ const App: React.FC = () => {
   }, [visibleArticles.length]);
 
   const scrollToTop = () => {
+    if (centerColumnRef.current) {
+      centerColumnRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1197,7 +1215,7 @@ const App: React.FC = () => {
         )}
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-10">
+      <main className="flex-1 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 p-6 md:p-10 lg:h-screen lg:max-h-screen lg:overflow-hidden">
         {isLoading ? (
           <div className="lg:col-span-12 py-32 text-center flex flex-col items-center">
             <div className="w-12 h-12 border-4 border-stone-200 border-t-stone-800 rounded-full animate-spin"></div>
@@ -1218,7 +1236,8 @@ const App: React.FC = () => {
             <aside className={`
               lg:col-span-3 space-y-6 lg:border-r border-stone-200 lg:pr-6 order-1 lg:order-1
               fixed lg:relative inset-y-0 left-0 w-80 lg:w-auto bg-white lg:bg-transparent z-[85] lg:z-0
-              transform transition-transform duration-300 ease-out p-8 lg:p-0 overflow-y-auto
+              transform transition-transform duration-300 ease-out p-8 lg:p-0 overflow-y-auto no-scrollbar
+              lg:h-full lg:overflow-y-hidden lg:hover:overflow-y-auto lg:pb-12
               ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'}
             `}>
               <div className="lg:hidden flex justify-between items-center mb-8 border-b border-stone-100 pb-4">
@@ -1312,7 +1331,11 @@ const App: React.FC = () => {
               </nav>
             </aside>
 
-            <div className="lg:col-span-6 space-y-6 order-3 lg:order-2">
+            <div 
+              ref={centerColumnRef}
+              onScroll={handleCenterScroll}
+              className="lg:col-span-6 space-y-6 order-3 lg:order-2 lg:h-full lg:overflow-y-hidden lg:hover:overflow-y-auto no-scrollbar lg:pr-2 lg:pb-12 relative"
+            >
               {/* Global Search Bar (in alto al centro della colonna principale) */}
               <div className="w-full bg-white border border-stone-200 p-4 shadow-md rounded-xl">
                 <form 
@@ -1437,9 +1460,25 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Central Column Scroll to Top Button (in basso a destra della colonna centrale) */}
+              <div className="sticky bottom-4 flex justify-end z-30 pointer-events-none">
+                <button
+                  type="button"
+                  onClick={scrollToTop}
+                  className={`pointer-events-auto bg-stone-900 text-white p-3 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:bg-stone-700 hover:scale-110 active:scale-90 border border-stone-700 ${
+                    (showCenterScrollTop || showScrollTop) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6 pointer-events-none'
+                  }`}
+                  title={t.backToTop || 'Torna in cima'}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m18 15-6-6-6 6"/>
+                  </svg>
+                </button>
+              </div>
             </div>
 
-            <aside className="lg:col-span-3 space-y-8 lg:border-l border-stone-200 lg:pl-6 text-center order-2 lg:order-3">
+            <aside className="lg:col-span-3 space-y-8 lg:border-l border-stone-200 lg:pl-6 text-center order-2 lg:order-3 lg:h-full lg:overflow-y-hidden lg:hover:overflow-y-auto no-scrollbar lg:pb-12">
               <section className="bg-white border-4 border-stone-800 p-6 shadow-sm rounded-lg">
                 <h3 className="text-xl font-bold uppercase border-b-2 border-stone-800 mb-6 newspaper-font">{t.yourProfile}</h3>
                 {user ? (
