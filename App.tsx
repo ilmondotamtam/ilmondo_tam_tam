@@ -7,6 +7,7 @@ import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
 import { supabase, supabaseUrl, supabaseAnonKey } from './services/supabase';
 import { getEmbedUrl } from './services/mediaUtils';
+import { uploadMediaToAruba } from './services/mediaCompression';
 import { Language, translations } from './translations';
 
 const App: React.FC = () => {
@@ -59,6 +60,7 @@ const App: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingHeader, setIsUploadingHeader] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headerFileInputRef = useRef<HTMLInputElement>(null);
@@ -313,7 +315,14 @@ const App: React.FC = () => {
   const checkSession = async () => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('future') || (error as any).code === 'PGRST303') {
+          console.warn("Session token issue detected, resetting local auth session...");
+          await supabase.auth.signOut({ scope: 'local' });
+        } else {
+          throw error;
+        }
+      }
       if (session?.user) {
         await syncUserProfile(session.user);
       }
@@ -322,67 +331,16 @@ const App: React.FC = () => {
     }
   };
 
-  const uploadToS3 = async (file: File, fileName: string): Promise<string> => {
-    const bucketName = 'TamTamStorage';
+  const uploadMedia = async (file: File, type: 'image' | 'video' | 'header' | 'avatar' = 'image'): Promise<string> => {
+    const isVideo = file.type.startsWith('video/') || type === 'video';
+    const mediaType = isVideo ? 'video' : type;
     
-    // Otteniamo la sessione corrente per l'autenticazione
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token || supabaseAnonKey;
-
-    // Eseguiamo l'upload diretto su Supabase Storage usando XMLHttpRequest per il tracking del progresso
-    return new Promise<string>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const percentComplete = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(percentComplete);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          // Otteniamo l'URL pubblico finale
-          const { data: { publicUrl } } = supabase.storage
-            .from(bucketName)
-            .getPublicUrl(fileName);
-          resolve(publicUrl);
-        } else {
-          console.error('Supabase Storage Upload Error Details:', {
-            status: xhr.status,
-            statusText: xhr.statusText,
-            body: xhr.responseText
-          });
-          
-          let friendlyError = `Errore Upload (${xhr.status}): ${xhr.statusText}`;
-          if (xhr.status === 403) {
-            friendlyError = `Accesso negato (403). Verifica le politiche RLS del bucket '${bucketName}' su Supabase.`;
-          } else if (xhr.status === 404) {
-            friendlyError = `Bucket '${bucketName}' non trovato (404). Assicurati che il bucket esista su Supabase.`;
-          }
-          reject(new Error(friendlyError));
-        }
-      });
-
-      xhr.addEventListener('error', () => {
-        reject(new Error("Errore di rete durante l'upload su Supabase."));
-      });
-
-      // L'endpoint per l'upload di Supabase è: [URL]/storage/v1/object/[BUCKET]/[PATH]
-      const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${fileName}`;
-      
-      xhr.open('POST', uploadUrl);
-      
-      // Headers necessari per Supabase
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.setRequestHeader('apikey', supabaseAnonKey);
-      
-      // Usiamo FormData per l'upload
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      xhr.send(formData);
+    const result = await uploadMediaToAruba(file, mediaType, (percent, statusText) => {
+      setUploadProgress(percent);
+      setUploadStatusText(statusText);
     });
+
+    return result.url;
   };
 
   const handlePaste = async () => {
@@ -441,7 +399,7 @@ const App: React.FC = () => {
   const fetchData = async () => {
     try {
       // Carichiamo articoli, immagine di testata e apprezzamenti in parallelo
-      const [articlesRes, testataRes] = await Promise.all([
+      let [articlesRes, testataRes] = await Promise.all([
         supabase
           .from('articles')
           .select('*, comments(*), apprezzamenti(user_id)')
@@ -453,7 +411,27 @@ const App: React.FC = () => {
           .maybeSingle() // Usiamo maybeSingle per evitare errori se la riga non esiste
       ]);
 
-      if (articlesRes.error) throw articlesRes.error;
+      if (articlesRes.error) {
+        // Gestione automatica del codice PGRST303 (JWT timestamp skew)
+        if (articlesRes.error.code === 'PGRST303' || String(articlesRes.error.message).includes('future')) {
+          console.warn("PGRST303 rilevato in fetchData: reset sessione e secondo tentativo...");
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch (_) {}
+
+          const retryArticles = await supabase
+            .from('articles')
+            .select('*, comments(*), apprezzamenti(user_id)')
+            .order('created_at', { ascending: false });
+
+          if (retryArticles.error) {
+            throw retryArticles.error;
+          }
+          articlesRes = retryArticles;
+        } else {
+          throw articlesRes.error;
+        }
+      }
 
       const formattedArticles: Article[] = (articlesRes.data || []).map((a: any) => ({
         id: a.id,
@@ -479,7 +457,7 @@ const App: React.FC = () => {
       
       sortArticles(formattedArticles);
 
-      if (testataRes.data) {
+      if (testataRes && testataRes.data) {
         setHeaderImage(testataRes.data.imma_testata);
       }
     } catch (error: any) {
@@ -1039,18 +1017,16 @@ const App: React.FC = () => {
     setIsUploading(true);
     setUploadProgress(0);
     try {
-      const fileExt = file.name.split('.').pop();
-      const uniqueName = `avatar-${user.id}-${Date.now()}.${fileExt}`;
-      
-      const publicUrl = await uploadToS3(file, uniqueName);
-      
+      const publicUrl = await uploadMedia(file, 'avatar');
       setProfileAvatar(publicUrl);
+      showToast("Avatar caricato e salvato su Aruba Business!");
     } catch (error: any) {
       console.error('Avatar upload error:', error);
       showToast(error.message || "Errore durante l'upload dell'avatar.", 'error');
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
+      setUploadStatusText('');
     }
   };
 
@@ -1063,6 +1039,7 @@ const App: React.FC = () => {
     setNewImageUrl('');
     setSelectedFile(null);
     setArticleError('');
+    setUploadStatusText('');
     setIsNewArticleModalOpen(false);
   };
 
@@ -1076,23 +1053,22 @@ const App: React.FC = () => {
     try {
       let finalImageUrl = newImageUrl;
 
-      // Se c'è un file selezionato, caricalo ora su Supabase Storage
+      // Se c'è un file selezionato, compriamolo e carichiamolo su Aruba Business (mediamag/immamag o mediamag/vidmag)
       if (selectedFile) {
         setIsUploading(true);
         setUploadProgress(0);
         
-        const fileExt = selectedFile.name.split('.').pop();
-        const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-        
         try {
-          const publicUrl = await uploadToS3(selectedFile, uniqueName);
+          const isVideo = selectedFile.type.startsWith('video/');
+          const publicUrl = await uploadMedia(selectedFile, isVideo ? 'video' : 'image');
           finalImageUrl = publicUrl;
           setNewImageUrl(publicUrl);
         } catch (uploadErr: any) {
-          throw new Error(`Errore durante l'upload del file: ${uploadErr.message || 'Errore sconosciuto'}`);
+          throw new Error(`Errore durante il salvataggio del file su Aruba: ${uploadErr.message || 'Errore sconosciuto'}`);
         } finally {
           setIsUploading(false);
           setUploadProgress(0);
+          setUploadStatusText('');
         }
       }
 
@@ -1114,6 +1090,7 @@ const App: React.FC = () => {
       // Reset e chiusura
       closeNewArticleModal();
       await fetchData();
+      showToast("Articolo pubblicato con successo!");
     } catch (err: any) {
       console.error("Article Creation Error:", err);
       setArticleError(err.message || "Errore durante il salvataggio dell'articolo.");
@@ -1150,7 +1127,7 @@ const App: React.FC = () => {
     setNewImageUrl(previewUrl);
     setSelectedFile(file);
     setArticleError('');
-    // L'upload avverrà solo al momento della pubblicazione dell'articolo (handleCreateArticle)
+    // L'upload e la compressione avverranno al momento della pubblicazione dell'articolo (handleCreateArticle)
   };
 
   const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1160,10 +1137,7 @@ const App: React.FC = () => {
     setIsUploadingHeader(true);
     setUploadProgress(0);
     try {
-      const fileExt = file.name.split('.').pop();
-      const uniqueName = `header-${Date.now()}.${fileExt}`;
-      
-      const publicUrl = await uploadToS3(file, uniqueName);
+      const publicUrl = await uploadMedia(file, 'header');
       
       const { error } = await supabase
         .from('testata')
@@ -1171,7 +1145,7 @@ const App: React.FC = () => {
 
       if (error) throw error;
       setHeaderImage(publicUrl);
-      showToast("Logo testata aggiornato con successo!");
+      showToast("Logo testata ottimizzato e salvato su Aruba Business!");
     } catch (error: any) {
       console.error('Header upload error:', error);
       const errorMsg = error.message || "Errore durante l'aggiornamento del logo.";
@@ -1179,6 +1153,7 @@ const App: React.FC = () => {
     } finally {
       setIsUploadingHeader(false);
       setUploadProgress(0);
+      setUploadStatusText('');
     }
   };
 
@@ -1721,15 +1696,28 @@ const App: React.FC = () => {
                       accept="image/*,video/*"
                     />
                   </div>
-                  {isUploading && (
-                    <div className="w-full mt-2">
-                      <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-red-600 transition-all" style={{ width: `${uploadProgress}%` }}></div>
-                      </div>
-                      <p className="text-[10px] text-center mt-1 text-stone-500 uppercase font-bold tracking-tighter">Caricamento in corso: {uploadProgress}%</p>
+                  {selectedFile && (
+                    <div className="flex items-center justify-between text-[10px] text-stone-500 bg-stone-50 p-2 rounded border border-stone-100">
+                      <span className="font-mono font-bold text-stone-700">
+                        Destinazione Aruba: <span className="text-red-700">mediamag/{selectedFile.type.startsWith('video/') ? 'vidmag' : 'immamag'}/</span>
+                      </span>
+                      <span className="font-medium text-stone-400">
+                        {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
                     </div>
                   )}
-                  <p className="text-[9px] text-stone-400 italic">Puoi incollare un link social o caricare un file.</p>
+                  {isUploading && (
+                    <div className="w-full mt-2 space-y-1">
+                      <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-red-600 transition-all duration-200" style={{ width: `${uploadProgress}%` }}></div>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-stone-600 font-bold uppercase tracking-tighter">
+                        <span>{uploadStatusText || 'Elaborazione in corso...'}</span>
+                        <span className="text-red-600">{uploadProgress}%</span>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[9px] text-stone-400 italic">Compressione automatica attiva. Puoi incollare un link social o caricare un file.</p>
                 </div>
               </div>
 

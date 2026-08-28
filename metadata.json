@@ -1,5 +1,8 @@
 {
   "name": "Il Mondo Tam Tam",
   "description": "Una testata opinionistica moderna e partecipativa, dove la tua voce risuona come un tam tam globale.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

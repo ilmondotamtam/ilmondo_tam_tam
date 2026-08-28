@@ -236,33 +236,7 @@ FOR UPDATE USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
 CREATE POLICY "Utenti possono eliminare i propri contatti" ON public.contatti 
 FOR DELETE USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
 
--- 13. Configurazione Storage (Buckets e RLS)
--- Nota: Queste operazioni devono essere eseguite con privilegi adeguati (es. Dashboard Supabase)
--- Crea il bucket 'TamTamStorage' se non esiste
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('TamTamStorage', 'TamTamStorage', true)
-ON CONFLICT (id) DO NOTHING;
-
--- Politiche di sicurezza per il bucket 'TamTamStorage'
--- Permetti la lettura pubblica
-CREATE POLICY "Public Access"
-ON storage.objects FOR SELECT
-USING ( bucket_id = 'TamTamStorage' );
-
--- Permetti l'inserimento agli utenti autenticati
-CREATE POLICY "Authenticated Insert"
-ON storage.objects FOR INSERT
-WITH CHECK (
-  bucket_id = 'TamTamStorage' 
-  AND auth.role() = 'authenticated'
-);
-
--- Permetti l'aggiornamento e l'eliminazione ai proprietari
-CREATE POLICY "Owner Update/Delete"
-ON storage.objects FOR ALL
-USING ( bucket_id = 'TamTamStorage' AND auth.uid() = owner );
-
--- 14. Tabella Messaggi Privati
+-- 13. Tabella Messaggi Privati
 CREATE TABLE IF NOT EXISTS public.messaggi (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     sender_id UUID REFERENCES public.utenti(id) ON DELETE CASCADE,

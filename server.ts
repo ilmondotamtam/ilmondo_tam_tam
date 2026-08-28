@@ -1,34 +1,77 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { saveMediaToAruba } from './server/arubaStorage';
 
 const app = express();
+const PORT = 3000;
+
 app.use(cors());
 app.use(express.json());
 
-// Configurazione S3 per Supabase
-const DEFAULT_S3_ENDPOINT = 'https://rsedmdahrhxmrlrkizmp.supabase.co/storage/v1/s3';
+// Serviamo la cartella mediamag locale come asset statici
+app.use('/mediamag', express.static(path.join(process.cwd(), 'public', 'mediamag')));
 
-let s3Client: S3Client | null = null;
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
-function getS3Client() {
-  if (!s3Client) {
-    const S3_ENDPOINT = process.env.SUPABASE_S3_ENDPOINT || DEFAULT_S3_ENDPOINT;
-    s3Client = new S3Client({
-      forcePathStyle: true,
-      region: process.env.SUPABASE_S3_REGION || 'us-east-1',
-      endpoint: S3_ENDPOINT,
-      credentials: {
-        accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || 'c69291e77f1d4552c9567eda8dc8d77d',
-        secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || 'c54bdc3aa79837a8d57389d8b2787165d5470af78b2db6565d5e3230cd5b5804',
-      },
+// Configurazione multer con memoria per il processing e upload
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024, // Limite 100MB
+  },
+  fileFilter: (req, file, cb) => {
+    const isImage = file.mimetype.startsWith('image/');
+    const isVideo = file.mimetype.startsWith('video/');
+    if (isImage || isVideo) {
+      cb(null, true);
+    } else {
+      cb(new Error('Formato file non supportato. Sono ammesse solo immagini e video.'));
+    }
+  }
+});
+
+// Endpoint di upload esclusivo per Aruba Business (mediamag/immamag e mediamag/vidmag)
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nessun file inviato.' });
+    }
+
+    const rawCategory = req.body.mediaCategory;
+    const mediaCategory = (rawCategory === 'video' || req.file.mimetype.startsWith('video/')) ? 'video' : 'image';
+
+    const result = await saveMediaToAruba(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+      mediaCategory,
+      req.headers.host
+    );
+
+    res.json({
+      success: true,
+      url: result.url,
+      filename: result.filename,
+      path: result.path,
+      size: result.size,
+      storageType: result.storageType,
+      warning: result.warning
+    });
+  } catch (error: any) {
+    console.error('Errore durante l\'upload multimediale su Aruba:', error);
+    res.status(500).json({
+      error: 'Errore durante il salvataggio su Aruba Business.',
+      details: error.message || String(error)
     });
   }
-  return s3Client;
-}
+});
 
 // Endpoint per risolvere i link brevi di TikTok (vt.tiktok.com, vm.tiktok.com)
 app.get('/api/resolve-tiktok', async (req, res) => {
@@ -38,7 +81,6 @@ app.get('/api/resolve-tiktok', async (req, res) => {
   }
 
   try {
-    // Usiamo fetch (disponibile in Node 18+) per seguire i redirect
     const response = await fetch(url, { 
       method: 'GET', 
       redirect: 'follow',
@@ -53,68 +95,24 @@ app.get('/api/resolve-tiktok', async (req, res) => {
   }
 });
 
-// Endpoint per generare un URL pre-firmato S3 per l'upload
-app.post('/api/upload/presign', async (req, res) => {
-  const { fileName, contentType } = req.body;
+// Fallback per rotte /api/* non gestite (garantisce sempre risposta JSON invece di index.html)
+app.all('/api/*all', (req, res) => {
+  res.status(404).json({ error: `Endpoint API '${req.method} ${req.path}' non trovato.` });
+});
 
-  if (!fileName || !contentType) {
-    return res.status(400).json({ error: 'fileName and contentType are required' });
-  }
-
-  if (!process.env.SUPABASE_S3_ACCESS_KEY_ID || !process.env.SUPABASE_S3_SECRET_ACCESS_KEY) {
-    console.error('S3 credentials are missing on the server');
-    return res.status(500).json({ error: 'S3 credentials are not configured on the server. Please add SUPABASE_S3_ACCESS_KEY_ID and SUPABASE_S3_SECRET_ACCESS_KEY to your secrets.' });
-  }
-
-  try {
-    const bucketName = process.env.SUPABASE_S3_BUCKET || 'TamTamStorage';
-    const S3_ENDPOINT = process.env.SUPABASE_S3_ENDPOINT || DEFAULT_S3_ENDPOINT;
-    const client = getS3Client();
-    
-    const command = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: fileName,
-      ContentType: contentType,
-    });
-
-    // Genera l'URL pre-firmato valido per 60 secondi
-    const signedUrl = await getSignedUrl(client, command, { expiresIn: 60 });
-    
-    // Costruiamo l'URL pubblico finale in modo robusto
-    // Il formato standard di Supabase è: https://[ref].supabase.co/storage/v1/object/public/[bucket]/[file]
-    // Se è definita SUPABASE_URL, la usiamo come base preferita
-    let baseUrl = process.env.SUPABASE_URL;
-    
-    if (baseUrl) {
-      baseUrl = baseUrl.replace(/\/$/, ''); // Rimuovi eventuale slash finale
-      // Assicuriamoci che non ci sia già /storage/v1 alla fine prima di aggiungerlo
-      if (!baseUrl.endsWith('/storage/v1')) {
-        baseUrl += '/storage/v1';
-      }
-    } else {
-      // Altrimenti deriviamo dall'endpoint S3
-      // L'endpoint S3 di Supabase finisce solitamente in /storage/v1/s3
-      baseUrl = S3_ENDPOINT.replace(/\/s3\/?$/, '');
-      if (!baseUrl.endsWith('/storage/v1')) {
-        baseUrl = baseUrl.replace(/\/$/, '') + '/storage/v1';
-      }
-    }
-    
-    const publicUrl = `${baseUrl}/object/public/${bucketName}/${fileName}`;
-
-    res.json({ signedUrl, publicUrl });
-  } catch (error: any) {
-    console.error('S3 presign error:', error);
-    res.status(500).json({ 
-      error: 'Failed to generate signed URL', 
-      details: error?.message || String(error) 
+// Middleware di gestione errori centralizzato per rotte API
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (req.path.startsWith('/api')) {
+    console.error('Errore API Server:', err);
+    return res.status(err.status || err.statusCode || 500).json({
+      error: err.message || 'Errore interno del server durante la richiesta API.',
+      details: process.env.NODE_ENV !== 'production' ? err.stack : undefined
     });
   }
+  next(err);
 });
 
 async function startServer() {
-  const PORT = 3000;
-
   // Vite middleware per lo sviluppo
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -130,13 +128,9 @@ async function startServer() {
     });
   }
 
-  // Avviamo il server solo se non siamo in un ambiente serverless (come Vercel Functions)
-  // o se siamo in locale
-  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
 startServer();
