@@ -1652,19 +1652,22 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                   <div className="relative flex items-center">
                     <input 
-                      placeholder={t.newArticle.imageUrl} 
-                      className="w-full p-3 pr-12 border-2 border-stone-100 rounded-lg text-sm" 
-                      value={newImageUrl} 
+                      placeholder={selectedFile ? "File allegato (anteprima sotto)" : t.newArticle.imageUrl} 
+                      className="w-full p-3 pr-12 border-2 border-stone-100 rounded-lg text-sm disabled:bg-stone-50 disabled:text-stone-400" 
+                      value={selectedFile ? '' : newImageUrl} 
+                      disabled={!!selectedFile}
                       onChange={e => setNewImageUrl(e.target.value)} 
                     />
-                    <button
-                      type="button"
-                      onClick={handlePaste}
-                      className="absolute right-2 p-2 text-stone-400 hover:text-stone-800 transition-colors"
-                      title="Incolla dagli appunti"
-                    >
-                      <ClipboardPaste size={18} />
-                    </button>
+                    {!selectedFile && (
+                      <button
+                        type="button"
+                        onClick={handlePaste}
+                        className="absolute right-2 p-2 text-stone-400 hover:text-stone-800 transition-colors"
+                        title="Incolla dagli appunti"
+                      >
+                        <ClipboardPaste size={18} />
+                      </button>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1679,6 +1682,9 @@ const App: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
+                          if (newImageUrl && newImageUrl.startsWith('blob:')) {
+                            URL.revokeObjectURL(newImageUrl);
+                          }
                           setSelectedFile(null);
                           setNewImageUrl('');
                         }}
@@ -1698,8 +1704,8 @@ const App: React.FC = () => {
                   </div>
                   {selectedFile && (
                     <div className="flex items-center justify-between text-[10px] text-stone-500 bg-stone-50 p-2 rounded border border-stone-100">
-                      <span className="font-mono font-bold text-stone-700">
-                        Destinazione Aruba: <span className="text-red-700">mediamag/{selectedFile.type.startsWith('video/') ? 'vidmag' : 'immamag'}/</span>
+                      <span className="font-medium text-stone-700 truncate max-w-[220px]" title={selectedFile.name}>
+                        📎 {selectedFile.name}
                       </span>
                       <span className="font-medium text-stone-400">
                         {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB

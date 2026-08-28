@@ -393,7 +393,7 @@ export async function uploadMediaToAruba(
   }
 
   // Fase 2: Upload HTTP / FormData verso l'endpoint `/api/upload`
-  if (onProgress) onProgress(55, 'Caricamento su server Aruba Business...');
+  if (onProgress) onProgress(55, 'Caricamento del file in corso...');
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -411,7 +411,7 @@ export async function uploadMediaToAruba(
         const totalProgress = Math.round(55 + (uploadPercent * 0.45));
         onProgress(
           totalProgress,
-          `Invio a mediamag/${isVideo ? 'vidmag' : 'immamag'}: ${uploadPercent}%`
+          `Caricamento in corso: ${uploadPercent}%`
         );
       }
     });
