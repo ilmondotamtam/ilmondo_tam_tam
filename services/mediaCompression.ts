@@ -149,7 +149,8 @@ export async function compressImage(
 }
 
 /**
- * Comprime un file video registrando a risoluzione e bitrate ottimizzati (es. 720p / 1.5 Mbps).
+ * Comprime un file video registrando nel formato WebM VP9 (risoluzione max 720p / 1.5 Mbps).
+ * Utilizza WebM con codec VP9 (e audio Opus se presente nel video sorgente).
  * Se il browser non supporta la compressione runtime tramite MediaRecorder o in caso di errore,
  * restituisce il file originale senza bloccare l'upload.
  */
@@ -188,10 +189,28 @@ export async function compressVideo(
     video.preload = 'auto';
 
     video.onloadedmetadata = async () => {
+      let audioCtx: AudioContext | null = null;
+      let bufferSourceNode: AudioBufferSourceNode | null = null;
+
+      const cleanup = () => {
+        try {
+          if (bufferSourceNode) {
+            bufferSourceNode.stop();
+            bufferSourceNode.disconnect();
+          }
+        } catch (_) {}
+        try {
+          if (audioCtx && audioCtx.state !== 'closed') {
+            audioCtx.close();
+          }
+        } catch (_) {}
+        URL.revokeObjectURL(videoUrl);
+      };
+
       try {
         const duration = video.duration;
         if (!duration || duration <= 0 || !isFinite(duration)) {
-          URL.revokeObjectURL(videoUrl);
+          cleanup();
           resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
           return;
         }
@@ -221,28 +240,102 @@ export async function compressVideo(
         const ctx = canvas.getContext('2d');
 
         if (!ctx) {
-          URL.revokeObjectURL(videoUrl);
+          cleanup();
           resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
           return;
         }
 
-        const stream = canvas.captureStream(30); // 30 FPS
+        const canvasStream = canvas.captureStream(30); // 30 FPS
         
-        // Seleziona il formato migliore supportato
-        const mimeTypes = [
+        // Estrazione e preservazione traccia audio originale (Opus per WebM)
+        let audioTrack: MediaStreamTrack | null = null;
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+
+        if (AudioContextClass) {
+          try {
+            audioCtx = new AudioContextClass();
+            if (audioCtx.state === 'suspended') {
+              await audioCtx.resume();
+            }
+
+            // Metodo 1: Decodifica diretta del buffer audio del file (massima fedeltà e sincronia senza dipendere da autoplay)
+            try {
+              const arrayBuf = await file.slice(0).arrayBuffer();
+              const decodedAudio = await audioCtx.decodeAudioData(arrayBuf);
+              if (decodedAudio && decodedAudio.numberOfChannels > 0) {
+                const destNode = audioCtx.createMediaStreamDestination();
+                bufferSourceNode = audioCtx.createBufferSource();
+                bufferSourceNode.buffer = decodedAudio;
+                bufferSourceNode.connect(destNode);
+                const tracks = destNode.stream.getAudioTracks();
+                if (tracks && tracks.length > 0) {
+                  audioTrack = tracks[0];
+                }
+              }
+            } catch (decErr) {
+              console.log('Decodifica diretta audio non supportata dal container, uso routing WebAudio:', decErr);
+            }
+
+            // Metodo 2: Se la decodifica diretta fallisce, cattura l'audio dall'elemento video
+            if (!audioTrack) {
+              video.muted = false; // Necessario per consentire il passaggio dell'audio nel graph WebAudio
+              video.volume = 1;
+              const sourceNode = audioCtx.createMediaElementSource(video);
+              const destNode = audioCtx.createMediaStreamDestination();
+              sourceNode.connect(destNode);
+              // Non connettiamo a audioCtx.destination per non far suonare gli altoparlanti dell'utente durante la compressione
+              const tracks = destNode.stream.getAudioTracks();
+              if (tracks && tracks.length > 0) {
+                audioTrack = tracks[0];
+              }
+            }
+          } catch (audioErr) {
+            console.warn('Inizializzazione WebAudio fallita:', audioErr);
+          }
+        }
+
+        // Metodo 3: Fallback cattura stream nativo se disponibile
+        if (!audioTrack) {
+          try {
+            const rawStream = (video as any).captureStream ? (video as any).captureStream() : ((video as any).mozCaptureStream ? (video as any).mozCaptureStream() : null);
+            if (rawStream && rawStream.getAudioTracks().length > 0) {
+              audioTrack = rawStream.getAudioTracks()[0];
+            }
+          } catch (_) {}
+        }
+
+        // Assembla lo stream con video e audio combinati
+        const combinedStream = new MediaStream([
+          canvasStream.getVideoTracks()[0],
+          ...(audioTrack ? [audioTrack] : [])
+        ]);
+
+        // Formati WebM VP9 supportati (con Opus se presente audio)
+        const vp9MimeTypes = audioTrack ? [
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=vp09.00.10.08,opus',
+          'video/webm;codecs=vp8,opus',
           'video/webm;codecs=vp9',
+          'video/webm'
+        ] : [
+          'video/webm;codecs=vp9',
+          'video/webm;codecs=vp09.00.10.08',
           'video/webm;codecs=vp8',
-          'video/webm',
-          'video/mp4'
+          'video/webm'
         ];
         
-        const selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+        const selectedMimeType = vp9MimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || (audioTrack ? 'video/webm;codecs=vp9,opus' : 'video/webm;codecs=vp9');
         
-        // Bitrate target ottimizzato: 1.5 Mbps per qualità eccellente e peso ridotto
-        const mediaRecorder = new MediaRecorder(stream, {
+        // Bitrate target ottimizzato: 1.5 Mbps video in VP9 + 128 kbps audio in Opus
+        const recorderOptions: MediaRecorderOptions = {
           mimeType: selectedMimeType,
-          videoBitsPerSecond: 1500000 
-        });
+          videoBitsPerSecond: 1500000
+        };
+        if (audioTrack) {
+          recorderOptions.audioBitsPerSecond = 128000;
+        }
+
+        const mediaRecorder = new MediaRecorder(combinedStream, recorderOptions);
 
         const chunks: Blob[] = [];
         mediaRecorder.ondataavailable = (e) => {
@@ -252,17 +345,17 @@ export async function compressVideo(
         };
 
         mediaRecorder.onstop = () => {
-          URL.revokeObjectURL(videoUrl);
-          const compressedBlob = new Blob(chunks, { type: selectedMimeType });
+          cleanup();
+          const compressedBlob = new Blob(chunks, { type: 'video/webm' });
 
           if (compressedBlob.size >= file.size || compressedBlob.size === 0) {
             resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
             return;
           }
 
-          const ext = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
-          const compressedFile = new File([compressedBlob], `video-${Date.now()}.${ext}`, {
-            type: selectedMimeType,
+          // File salvato sempre come contenitore .webm (VP9) con mimeType standard video/webm
+          const compressedFile = new File([compressedBlob], `video-${Date.now()}.webm`, {
+            type: 'video/webm',
             lastModified: Date.now()
           });
 
@@ -278,7 +371,7 @@ export async function compressVideo(
         };
 
         mediaRecorder.onerror = () => {
-          URL.revokeObjectURL(videoUrl);
+          cleanup();
           resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
         };
 
@@ -319,11 +412,21 @@ export async function compressVideo(
           }
         }, (duration + 5) * 1000);
 
-        await video.play();
+        if (bufferSourceNode) {
+          bufferSourceNode.start(0);
+        }
+
+        try {
+          await video.play();
+        } catch (playErr) {
+          // Se la riproduzione con audio viene bloccata dal browser per policy, riprova con muted
+          video.muted = true;
+          await video.play();
+        }
         render();
       } catch (err) {
         console.warn('Video compression fallback to original:', err);
-        URL.revokeObjectURL(videoUrl);
+        cleanup();
         resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
       }
     };
@@ -427,9 +530,10 @@ export async function uploadMediaToAruba(
       }
 
       if (xhr.status >= 200 && xhr.status < 300) {
-        if (isJson && data && data.url) {
+        const returnedUrl = data?.url || data?.publicUrl || data?.path;
+        if (isJson && returnedUrl) {
           resolve({
-            url: data.url,
+            url: returnedUrl,
             originalSize,
             finalSize,
             savingsPercent
@@ -442,9 +546,9 @@ export async function uploadMediaToAruba(
             savingsPercent
           });
         } else {
-          const msg = (isJson && data && (data.error || data.message))
-            ? (data.error || data.message)
-            : "Risposta del server non valida.";
+          const msg = (isJson && data && (data.error || data.message || data.details))
+            ? (data.error || data.message || data.details)
+            : (xhr.responseText ? `Risposta inattesa dal server (${xhr.status}): ${xhr.responseText.replace(/<[^>]+>/g, ' ').slice(0, 100)}` : "Risposta del server non valida.");
           reject(new Error(msg));
         }
       } else {

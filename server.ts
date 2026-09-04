@@ -20,6 +20,9 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+const VALID_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif', 'ico', 'heic', 'heif', 'tiff', 'jfif']);
+const VALID_VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv', 'ogv', 'wmv', 'flv', 'm4v', '3gp', 'ts', 'mts']);
+
 // Configurazione multer con memoria per il processing e upload
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -27,30 +30,58 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // Limite 100MB
   },
   fileFilter: (req, file, cb) => {
-    const isImage = file.mimetype.startsWith('image/');
-    const isVideo = file.mimetype.startsWith('video/');
-    if (isImage || isVideo) {
+    const ext = path.extname(file.originalname || '').toLowerCase().replace(/^\./, '');
+    const mime = (file.mimetype || '').toLowerCase();
+    const isImage = mime.startsWith('image/') || VALID_IMAGE_EXTS.has(ext);
+    const isVideo = mime.startsWith('video/') || VALID_VIDEO_EXTS.has(ext) || mime === 'application/ogg' || mime === 'application/x-matroska' || mime === 'application/mp4';
+    const isOctetStreamValid = (mime === 'application/octet-stream' || !mime) && (VALID_IMAGE_EXTS.has(ext) || VALID_VIDEO_EXTS.has(ext) || !ext);
+
+    if (isImage || isVideo || isOctetStreamValid) {
       cb(null, true);
     } else {
-      cb(new Error('Formato file non supportato. Sono ammesse solo immagini e video.'));
+      cb(new Error(`Formato file '${mime || ext || 'sconosciuto'}' non supportato. Sono ammesse solo immagini e video.`));
     }
   }
 });
 
 // Endpoint di upload esclusivo per Aruba Business (mediamag/immamag e mediamag/vidmag)
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', (req, res, next) => {
+  upload.single('file')(req, res, (err: any) => {
+    if (err) {
+      console.error('Multer Upload Error:', err);
+      return res.status(400).json({
+        error: err.message || 'Errore durante la ricezione del file multimediale.',
+        details: String(err)
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Nessun file inviato.' });
     }
 
-    const rawCategory = req.body.mediaCategory;
-    const mediaCategory = (rawCategory === 'video' || req.file.mimetype.startsWith('video/')) ? 'video' : 'image';
+    const ext = path.extname(req.file.originalname || '').toLowerCase().replace(/^\./, '');
+    const mime = (req.file.mimetype || '').toLowerCase();
+    const rawCategory = req.body?.mediaCategory;
+    const isVideo = rawCategory === 'video' || mime.startsWith('video/') || VALID_VIDEO_EXTS.has(ext) || mime === 'application/ogg' || mime === 'application/x-matroska';
+    const mediaCategory: 'image' | 'video' = isVideo ? 'video' : 'image';
+
+    // Normalizzazione MIME type se non specifico
+    let effectiveMime = req.file.mimetype;
+    if (!effectiveMime || effectiveMime === 'application/octet-stream') {
+      if (isVideo) {
+        effectiveMime = ext === 'mp4' ? 'video/mp4' : (ext === 'mov' ? 'video/quicktime' : 'video/webm');
+      } else {
+        effectiveMime = ext === 'png' ? 'image/png' : (ext === 'webp' ? 'image/webp' : 'image/jpeg');
+      }
+    }
 
     const result = await saveMediaToAruba(
       req.file.buffer,
       req.file.originalname,
-      req.file.mimetype,
+      effectiveMime,
       mediaCategory,
       req.headers.host
     );

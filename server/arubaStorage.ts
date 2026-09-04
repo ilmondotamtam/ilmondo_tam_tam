@@ -91,7 +91,7 @@ export async function saveMediaToAruba(
     else if (mimeType.includes('mp4')) ext = 'mp4';
     else if (mimeType.includes('webm')) ext = 'webm';
     else if (mimeType.includes('quicktime') || mimeType.includes('mov')) ext = 'mov';
-    else ext = isVideo ? 'mp4' : 'webp';
+    else ext = isVideo ? 'webm' : 'webp';
   }
   
   // Generazione nome univoco senza includere il nome originale del file: timestamp + identificatore casuale
