@@ -234,12 +234,7 @@ export async function saveMediaToAruba(
   const localFilePath = path.join(localTargetDir, finalFilename);
   await fs.promises.writeFile(localFilePath, fileBuffer);
 
-  let publicUrl = '';
-  if (arubaBaseUrl) {
-    publicUrl = `${arubaBaseUrl}/${relativeMediaPath}`;
-  } else {
-    publicUrl = `/${relativeMediaPath}`;
-  }
+  const publicUrl = `/${relativeMediaPath}`;
 
   console.log(`[Storage Locale] Media salvato in public/${relativeMediaPath} (URL: ${publicUrl})`);
 

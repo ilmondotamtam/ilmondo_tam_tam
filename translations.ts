@@ -39,6 +39,12 @@ export interface Translations {
     backToLogin: string;
     haveAccountLogin: string;
     loadingAuth: string;
+    resetPasswordTitle: string;
+    newPasswordLabel: string;
+    confirmNewPasswordLabel: string;
+    resetPasswordBtn: string;
+    resetPasswordSuccessMessage: string;
+    passwordsDoNotMatch: string;
   };
   article: {
     author: string;
@@ -144,7 +150,13 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: 'Nuovo utente? Registrati',
       backToLogin: 'Torna al Login',
       haveAccountLogin: 'Hai un account? Accedi',
-      loadingAuth: 'CARICAMENTO...'
+      loadingAuth: 'CARICAMENTO...',
+      resetPasswordTitle: 'Reimposta la tua Password',
+      newPasswordLabel: 'Nuova Password (min. 6 caratteri)',
+      confirmNewPasswordLabel: 'Conferma Nuova Password',
+      resetPasswordBtn: 'REIMPOSTA PASSWORD',
+      resetPasswordSuccessMessage: 'Password aggiornata con successo! Ora puoi effettuare il login.',
+      passwordsDoNotMatch: 'Le due password inserite non coincidono.'
     },
     article: {
       author: 'Autore',
@@ -235,7 +247,13 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: 'New user? Register',
       backToLogin: 'Back to Login',
       haveAccountLogin: 'Have an account? Login',
-      loadingAuth: 'LOADING...'
+      loadingAuth: 'LOADING...',
+      resetPasswordTitle: 'Reset your Password',
+      newPasswordLabel: 'New Password (min. 6 chars)',
+      confirmNewPasswordLabel: 'Confirm New Password',
+      resetPasswordBtn: 'RESET PASSWORD',
+      resetPasswordSuccessMessage: 'Password updated successfully! You can now log in.',
+      passwordsDoNotMatch: 'The two passwords do not match.'
     },
     article: {
       author: 'Author',
@@ -326,7 +344,13 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: 'Nouvel utilisateur ? S\'inscrire',
       backToLogin: 'Retour à la connexion',
       haveAccountLogin: 'Vous avez déjà un compte ? Connexion',
-      loadingAuth: 'CHARGEMENT...'
+      loadingAuth: 'CHARGEMENT...',
+      resetPasswordTitle: 'Réinitialiser votre mot de passe',
+      newPasswordLabel: 'Nouveau mot de passe (min. 6 car.)',
+      confirmNewPasswordLabel: 'Confirmer le nouveau mot de passe',
+      resetPasswordBtn: 'RÉINITIALISER LE MOT DE PASSE',
+      resetPasswordSuccessMessage: 'Mot de passe mis à jour avec succès ! Vous pouvez maintenant vous connecter.',
+      passwordsDoNotMatch: 'Les deux mots de passe ne correspondent pas.'
     },
     article: {
       author: 'Auteur',
@@ -417,7 +441,13 @@ export const translations: Record<Language, Translations> = {
       newUserRegistration: '¿Nuevo usuario? Regístrese',
       backToLogin: 'Volver al inicio de sesión',
       haveAccountLogin: '¿Ya tiene una cuenta? Acceso',
-      loadingAuth: 'CARGANDO...'
+      loadingAuth: 'CARGANDO...',
+      resetPasswordTitle: 'Restablecer su contraseña',
+      newPasswordLabel: 'Nueva contraseña (mín. 6 car.)',
+      confirmNewPasswordLabel: 'Confirmar nueva contraseña',
+      resetPasswordBtn: 'RESTABLECER CONTRASEÑA',
+      resetPasswordSuccessMessage: '¡Contraseña actualizada con éxito! Ahora puede iniciar sesión.',
+      passwordsDoNotMatch: 'Las dos contraseñas no coinciden.'
     },
     article: {
       author: 'Autor',

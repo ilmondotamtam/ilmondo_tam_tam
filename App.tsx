@@ -6,7 +6,7 @@ import { CATEGORIES } from './constants';
 import { ArticleCard } from './components/ArticleCard';
 import { CommentSection } from './components/CommentSection';
 import { supabase, supabaseUrl, supabaseAnonKey } from './services/supabase';
-import { getEmbedUrl } from './services/mediaUtils';
+import { getEmbedUrl, isVideoUrl } from './services/mediaUtils';
 import { uploadMediaToAruba } from './services/mediaCompression';
 import { Language, translations } from './translations';
 
@@ -17,7 +17,10 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD'>('LOGIN');
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD'>('LOGIN');
+  const [resetPasswordToken, setResetPasswordToken] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
   const [isNewArticleModalOpen, setIsNewArticleModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | null>(null);
@@ -26,6 +29,24 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const action = urlParams.get('action');
+      const token = urlParams.get('token');
+      const email = urlParams.get('email');
+
+      if ((action === 'reset_password' || action === 'reset-password') && token) {
+        setResetPasswordToken(token);
+        if (email) setAuthEmail(email);
+        setAuthMode('RESET_PASSWORD');
+        setIsAuthModalOpen(true);
+      }
+    } catch (e) {
+      console.error("Error parsing URL params for reset password:", e);
+    }
+  }, []);
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -316,7 +337,7 @@ const App: React.FC = () => {
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) {
-        if (error.message?.includes('future') || (error as any).code === 'PGRST303') {
+        if ((error as any).message?.includes('future') || (error as any).code === 'PGRST303') {
           console.warn("Session token issue detected, resetting local auth session...");
           await supabase.auth.signOut({ scope: 'local' });
         } else {
@@ -436,23 +457,23 @@ const App: React.FC = () => {
       const formattedArticles: Article[] = (articlesRes.data || []).map((a: any) => ({
         id: a.id,
         title: a.title,
-        summary: a.summary,
-        content: a.content,
-        authorId: a.author_id,
-        authorName: a.author_name,
-        category: a.category as Category,
-        imageUrl: a.image_url,
+        summary: a.summary || (a.content ? a.content.substring(0, 197) + '...' : ''),
+        content: a.content || '',
+        authorId: a.authorId || a.author_id || '',
+        authorName: a.authorName || a.author_name || 'Autore',
+        category: (a.category || 'Opinioni') as Category,
+        imageUrl: a.imageUrl || a.image_url || '',
         likes: a.likes || 0,
-        likedBy: (a.apprezzamenti || []).map((l: any) => l.user_id),
-        timestamp: new Date(a.created_at).getTime(),
+        likedBy: a.likedBy || (a.apprezzamenti || []).map((l: any) => l.user_id || l),
+        timestamp: a.timestamp || (a.created_at ? new Date(a.created_at).getTime() : Date.now()),
         comments: (a.comments || []).map((c: any) => ({
           id: c.id,
-          articleId: c.article_id,
-          userId: c.user_id,
+          articleId: c.articleId || c.article_id,
+          userId: c.userId || c.user_id,
           username: c.username,
           content: c.content,
-          timestamp: new Date(c.created_at).getTime()
-        })).sort((a: any, b: any) => b.timestamp - a.timestamp)
+          timestamp: c.timestamp || (c.created_at ? new Date(c.created_at).getTime() : Date.now())
+        })).sort((x: any, y: any) => (y.timestamp || 0) - (x.timestamp || 0))
       }));
       
       sortArticles(formattedArticles);
@@ -507,7 +528,7 @@ const App: React.FC = () => {
       }
 
       // Collect unique user IDs
-      const userIds = Array.from(new Set(contactsData.flatMap(c => [c.sender_id, c.receiver_id])));
+      const userIds = Array.from(new Set(contactsData.flatMap((c: any) => [c.sender_id, c.receiver_id])));
       
       // Fetch user details
       const { data: usersData, error: usersError } = await supabase
@@ -517,11 +538,11 @@ const App: React.FC = () => {
 
       if (usersError) throw usersError;
 
-      const usersMap = new Map(usersData?.map(u => [u.id, u]));
+      const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
 
       const formattedContacts: Contatto[] = contactsData.map((c: any) => {
-        const senderData = usersMap.get(c.sender_id);
-        const receiverData = usersMap.get(c.receiver_id);
+        const senderData: any = usersMap.get(c.sender_id);
+        const receiverData: any = usersMap.get(c.receiver_id);
         
         const sName = `${senderData?.first_name || ''} ${senderData?.last_name || ''}`.trim();
         const rName = `${receiverData?.first_name || ''} ${receiverData?.last_name || ''}`.trim();
@@ -571,7 +592,7 @@ const App: React.FC = () => {
       }
 
       // Collect unique user IDs
-      const userIds = Array.from(new Set(messagesData.flatMap(m => [m.sender_id, m.receiver_id])));
+      const userIds = Array.from(new Set(messagesData.flatMap((m: any) => [m.sender_id, m.receiver_id])));
       
       // Fetch user details
       const { data: usersData, error: usersError } = await supabase
@@ -581,10 +602,10 @@ const App: React.FC = () => {
 
       if (usersError) throw usersError;
 
-      const usersMap = new Map(usersData?.map(u => [u.id, u]));
+      const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
 
       const formattedMessages: PrivateMessage[] = messagesData.map((m: any) => {
-        const senderInfo = usersMap.get(m.sender_id);
+        const senderInfo: any = usersMap.get(m.sender_id);
         const sName = `${senderInfo?.first_name || ''} ${senderInfo?.last_name || ''}`.trim();
         
         return {
@@ -825,23 +846,23 @@ const App: React.FC = () => {
           setSelectedArticle({
             id: a.id,
             title: a.title,
-            summary: a.summary,
-            content: a.content,
-            authorId: a.author_id,
-            authorName: a.author_name,
-            category: a.category as Category,
-            imageUrl: a.image_url,
+            summary: a.summary || (a.content ? a.content.substring(0, 197) + '...' : ''),
+            content: a.content || '',
+            authorId: a.authorId || a.author_id || '',
+            authorName: a.authorName || a.author_name || 'Autore',
+            category: (a.category || 'Opinioni') as Category,
+            imageUrl: a.imageUrl || a.image_url || '',
             likes: a.likes || 0,
-            likedBy: (a.apprezzamenti || []).map((l: any) => l.user_id),
-            timestamp: new Date(a.created_at).getTime(),
+            likedBy: a.likedBy || (a.apprezzamenti || []).map((l: any) => l.user_id || l),
+            timestamp: a.timestamp || (a.created_at ? new Date(a.created_at).getTime() : Date.now()),
             comments: (a.comments || []).map((c: any) => ({
               id: c.id,
-              articleId: c.article_id,
-              userId: c.user_id,
+              articleId: c.articleId || c.article_id,
+              userId: c.userId || c.user_id,
               username: c.username,
               content: c.content,
-              timestamp: new Date(c.created_at).getTime()
-            })).sort((a: any, b: any) => b.timestamp - a.timestamp)
+              timestamp: c.timestamp || (c.created_at ? new Date(c.created_at).getTime() : Date.now())
+            })).sort((x: any, y: any) => (y.timestamp || 0) - (x.timestamp || 0))
           });
         }
       }
@@ -884,8 +905,9 @@ const App: React.FC = () => {
 
         if (signUpError) throw signUpError;
         
-        // Se la registrazione ha successo, mostriamo la modale di verifica
-        setAuthMode('VERIFY');
+        // Registrazione completata su MySQL Aruba
+        setIsAuthModalOpen(false);
+        showToast("Registrazione completata con successo nel database MySQL!");
       } else if (authMode === 'LOGIN') {
         const { error } = await supabase.auth.signInWithPassword({
           email: authEmail,
@@ -893,29 +915,59 @@ const App: React.FC = () => {
         });
 
         if (error) {
-          if (error.message.includes("Email not confirmed")) {
-            setAuthMode('VERIFY');
-            throw new Error("L'email non è stata confermata. Clicca sul link ricevuto via mail.");
-          }
           throw error;
         }
         
         // Chiudiamo la modale e resettiamo lo stato di caricamento
         setIsAuthModalOpen(false);
         setIsGeneratingAI(false);
+        showToast("Accesso effettuato con successo!");
       } else if (authMode === 'FORGOT_PASSWORD') {
         const resetPath = window.location.origin + (window.location.pathname === '/' ? '' : window.location.pathname);
         const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
           redirectTo: `${resetPath}?action=reset_password`,
         });
         if (error) throw error;
-        showToast("Email di recupero inviata! Controlla la tua posta.");
+        showToast("Email di recupero inviata! Controlla la tua posta (anche nello SPAM).");
+        setAuthMode('LOGIN');
+      } else if (authMode === 'RESET_PASSWORD') {
+        if (!resetNewPassword || resetNewPassword.length < 6) {
+          setAuthError('La nuova password deve contenere almeno 6 caratteri.');
+          return;
+        }
+        if (resetNewPassword !== resetConfirmPassword) {
+          setAuthError(t.auth.passwordsDoNotMatch);
+          return;
+        }
+        if (!resetPasswordToken) {
+          setAuthError('Token di recupero mancante o non valido. Richiedi un nuovo link.');
+          return;
+        }
+
+        const { error } = await supabase.auth.resetPassword({
+          token: resetPasswordToken,
+          new_password: resetNewPassword
+        });
+
+        if (error) throw error;
+
+        // Pulizia URL e campi password
+        try {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (e) {
+          console.warn("Could not update history state", e);
+        }
+        setResetNewPassword('');
+        setResetConfirmPassword('');
+        setResetPasswordToken('');
+        setAuthPassword('');
+        showToast(t.auth.resetPasswordSuccessMessage);
         setAuthMode('LOGIN');
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
       setAuthError(err.message === 'Failed to fetch' 
-        ? "Impossibile contattare il server. Controlla la configurazione di Supabase." 
+        ? "Impossibile contattare il server. Controlla la connessione ad Aruba Business MySQL Bridge." 
         : err.message || 'Errore durante l\'operazione');
     } finally {
       setIsGeneratingAI(false);
@@ -1526,7 +1578,13 @@ const App: React.FC = () => {
             {authMode !== 'VERIFY' ? (
               <>
                 <h2 className="text-3xl font-bold newspaper-font mb-2 text-center uppercase tracking-tighter">
-                  {authMode === 'LOGIN' ? t.auth.welcomeBack : t.auth.joinUs}
+                  {authMode === 'LOGIN' 
+                    ? t.auth.welcomeBack 
+                    : authMode === 'RESET_PASSWORD'
+                      ? t.auth.resetPasswordTitle
+                      : authMode === 'FORGOT_PASSWORD'
+                        ? t.auth.forgotPassword
+                        : t.auth.joinUs}
                 </h2>
                 <p className="text-center text-[9px] text-stone-400 uppercase font-black mb-6 tracking-widest">{t.auth.voiceOfTamTam}</p>
                 
@@ -1543,13 +1601,13 @@ const App: React.FC = () => {
                         <div className="flex items-start gap-3">
                           <input type="checkbox" id="privacy" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={privacyAccepted} onChange={(e) => setPrivacyAccepted(e.target.checked)} />
                           <label htmlFor="privacy" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
-                            {t.auth.privacy} <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/privacy.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a>.
+                            {t.auth.privacy} <a href="/mediamag/privacy.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Privacy Policy</a>.
                           </label>
                         </div>
                         <div className="flex items-start gap-3">
                           <input type="checkbox" id="contract" className="mt-1 w-4 h-4 accent-stone-800 cursor-pointer" checked={contractAccepted} onChange={(e) => setContractAccepted(e.target.checked)} />
                           <label htmlFor="contract" className="text-[11px] text-stone-600 leading-tight cursor-pointer">
-                            {t.auth.contract} <a href={`${supabaseUrl}/storage/v1/object/public/TamTamStorage/contratto.pdf`} target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
+                            {t.auth.contract} <a href="/mediamag/contratto.pdf" target="_blank" className="font-bold text-stone-900 border-b border-stone-300 hover:border-stone-800">Contratto di Servizio</a>.
                           </label>
                         </div>
                       </div>
@@ -1563,7 +1621,10 @@ const App: React.FC = () => {
                         <div className="text-right">
                           <button 
                             type="button" 
-                            onClick={() => setAuthMode('FORGOT_PASSWORD')}
+                            onClick={() => {
+                              setAuthError('');
+                              setAuthMode('FORGOT_PASSWORD');
+                            }}
                             className="text-[12px] font-bold uppercase text-red-600 hover:text-red-800 tracking-widest underline underline-offset-4 decoration-2 decoration-red-200 hover:decoration-red-400 transition-all"
                           >
                             {t.auth.forgotPasswordQuestion}
@@ -1578,16 +1639,69 @@ const App: React.FC = () => {
                         {t.auth.forgotPasswordInstructions}
                       </p>
                       <input required type="email" placeholder={t.auth.email} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                      <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-[11px] text-amber-800 leading-tight">
+                        💡 <strong>Suggerimento:</strong> Controlla anche la cartella <strong>SPAM</strong> o Posta Indesiderata nel caso in cui l'email non compaia in Posta in Arrivo entro pochi minuti.
+                      </div>
+                    </div>
+                  )}
+                  {authMode === 'RESET_PASSWORD' && (
+                    <div className="space-y-4">
+                      {authEmail && (
+                        <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-600">
+                          Account: <strong className="text-stone-900">{authEmail}</strong>
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        <input 
+                          required 
+                          type="password" 
+                          minLength={6}
+                          placeholder={t.auth.newPasswordLabel} 
+                          className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
+                          value={resetNewPassword} 
+                          onChange={e => setResetNewPassword(e.target.value)} 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <input 
+                          required 
+                          type="password" 
+                          minLength={6}
+                          placeholder={t.auth.confirmNewPasswordLabel} 
+                          className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
+                          value={resetConfirmPassword} 
+                          onChange={e => setResetConfirmPassword(e.target.value)} 
+                        />
+                      </div>
                     </div>
                   )}
                   {authError && <div className="bg-red-50 border-l-4 border-red-500 p-3"><p className="text-red-700 text-[10px] font-bold leading-tight uppercase">{authError}</p></div>}
                   <button disabled={isGeneratingAI} type="submit" className="w-full bg-stone-900 text-white py-4 font-black uppercase tracking-widest text-xs rounded-lg hover:bg-stone-700 disabled:opacity-50 transition-all">
-                    {isGeneratingAI ? t.auth.loadingAuth : (authMode === 'LOGIN' ? t.auth.login : authMode === 'FORGOT_PASSWORD' ? t.auth.sendLink : t.auth.register)}
+                    {isGeneratingAI 
+                      ? t.auth.loadingAuth 
+                      : (authMode === 'LOGIN' 
+                          ? t.auth.login 
+                          : authMode === 'FORGOT_PASSWORD' 
+                            ? t.auth.sendLink 
+                            : authMode === 'RESET_PASSWORD'
+                              ? t.auth.resetPasswordBtn
+                              : t.auth.register)}
                   </button>
                 </form>
                 <div className="mt-8 pt-6 border-t border-stone-100 text-center">
-                  <button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="w-full text-sm font-black uppercase text-stone-900 hover:bg-stone-900 hover:text-white tracking-widest py-3 px-6 border-2 border-stone-900 rounded-lg transition-all shadow-sm active:scale-95">
-                    {authMode === 'LOGIN' ? t.auth.newUserRegistration : authMode === 'FORGOT_PASSWORD' ? t.auth.backToLogin : t.auth.haveAccountLogin}
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setAuthError('');
+                      setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN');
+                    }} 
+                    className="w-full text-sm font-black uppercase text-stone-900 hover:bg-stone-900 hover:text-white tracking-widest py-3 px-6 border-2 border-stone-900 rounded-lg transition-all shadow-sm active:scale-95"
+                  >
+                    {authMode === 'LOGIN' 
+                      ? t.auth.newUserRegistration 
+                      : (authMode === 'FORGOT_PASSWORD' || authMode === 'RESET_PASSWORD') 
+                        ? t.auth.backToLogin 
+                        : t.auth.haveAccountLogin}
                   </button>
                 </div>
               </>
@@ -1747,8 +1861,8 @@ const App: React.FC = () => {
                         </div>
                       );
                     }
-                    if (newImageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i) || (selectedFile && selectedFile.type.startsWith('video/'))) {
-                      return <video src={newImageUrl} className="w-full max-h-80 object-contain" controls />;
+                    if ((newImageUrl && isVideoUrl(newImageUrl)) || (selectedFile && selectedFile.type.startsWith('video/'))) {
+                      return <video src={newImageUrl} className="w-full max-h-80 object-contain" controls playsInline preload="metadata" />;
                     }
                     return <img src={newImageUrl} alt="Preview" className="w-full max-h-80 object-contain" referrerPolicy="no-referrer" />;
                   })()}
@@ -2363,17 +2477,29 @@ const App: React.FC = () => {
               </div>
             </div>
             {(() => {
-              const embedUrl = getEmbedUrl(selectedArticle.imageUrl);
+              const mediaUrl = selectedArticle.imageUrl && typeof selectedArticle.imageUrl === 'string' && selectedArticle.imageUrl.trim() !== '' && selectedArticle.imageUrl.trim() !== 'null' ? selectedArticle.imageUrl.trim() : null;
+              if (!mediaUrl) return null;
+              const embedUrl = getEmbedUrl(mediaUrl);
               if (embedUrl) {
-                return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen />;
+                return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" loading="lazy" />;
               }
-              if (selectedArticle.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
-                return <video src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg" controls />;
+              if (isVideoUrl(mediaUrl)) {
+                return <video src={mediaUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg mx-auto" controls playsInline preload="metadata" />;
               }
-              return <img src={selectedArticle.imageUrl} className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" alt="Cover" referrerPolicy="no-referrer" />;
+              return (
+                <img 
+                  src={mediaUrl} 
+                  className="w-full h-auto max-h-[600px] object-cover mb-12 rounded shadow-lg" 
+                  alt={selectedArticle.title} 
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                />
+              );
             })()}
             <div className="prose prose-stone max-w-none text-stone-800 text-lg font-serif leading-relaxed">
-              {selectedArticle.content.split('\n').map((p, i) => (
+              {(selectedArticle.content || '').split('\n').map((p, i) => (
                 <p key={i} className="mb-6">{p}</p>
               ))}
             </div>

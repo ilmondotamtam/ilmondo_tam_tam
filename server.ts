@@ -1,23 +1,36 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { saveMediaToAruba } from './server/arubaStorage';
+import { arubaRouter } from './server/arubaRoutes';
 
 const app = express();
 const PORT = 3000;
 
+// Protezione HTTP OWASP con Helmet
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabilitato per consentire anteprime iframe, video esterni (TikTok/YouTube) e Vite
+  crossOriginEmbedderPolicy: false
+}));
+
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
-// Serviamo la cartella mediamag locale come asset statici
+// Serviamo la cartella mediamag locale e i file aruba-bridge
 app.use('/mediamag', express.static(path.join(process.cwd(), 'public', 'mediamag')));
+app.use('/aruba-bridge', express.static(path.join(process.cwd(), 'aruba-bridge')));
+app.use('/public/aruba-bridge', express.static(path.join(process.cwd(), 'public', 'aruba-bridge')));
 
-// Health check endpoint
+// Montiamo tutte le rotte API per Aruba MySQL e Auth
+app.use('/api', arubaRouter);
+
+// Health check endpoint generale
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), database: 'MySQL on Aruba Business (PHP Bridge)' });
 });
 
 const VALID_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif', 'ico', 'heic', 'heif', 'tiff', 'jfif']);

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Article } from '../types';
-import { getEmbedUrl } from '../services/mediaUtils';
+import { getEmbedUrl, isVideoUrl } from '../services/mediaUtils';
 import { Translations } from '../translations';
 
 interface ArticleCardProps {
@@ -104,20 +104,23 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onAu
       </div>
 
       {/* Media Container */}
-      <div className="relative bg-stone-100 overflow-hidden">
-        {(() => {
-          const embedUrl = getEmbedUrl(article.imageUrl);
-          if (embedUrl) {
-            const isTikTok = article.imageUrl.includes('tiktok.com');
-            const isInstagram = article.imageUrl.includes('instagram.com');
-            const isFacebook = article.imageUrl.includes('facebook.com');
-            
-            let containerClass = "aspect-video";
-            if (isTikTok) containerClass = "aspect-[9/16] max-h-[600px] mx-auto";
-            else if (isInstagram) containerClass = "aspect-square max-h-[600px] mx-auto";
-            else if (isFacebook) containerClass = "aspect-[4/3] max-h-[500px] mx-auto";
+      {(() => {
+        const mediaUrl = article.imageUrl && typeof article.imageUrl === 'string' && article.imageUrl.trim() !== '' && article.imageUrl.trim() !== 'null' ? article.imageUrl.trim() : null;
+        if (!mediaUrl) return null;
 
-            return (
+        const embedUrl = getEmbedUrl(mediaUrl);
+        if (embedUrl) {
+          const isTikTok = mediaUrl.includes('tiktok.com');
+          const isInstagram = mediaUrl.includes('instagram.com');
+          const isFacebook = mediaUrl.includes('facebook.com');
+          
+          let containerClass = "aspect-video";
+          if (isTikTok) containerClass = "aspect-[9/16] max-h-[600px] mx-auto";
+          else if (isInstagram) containerClass = "aspect-square max-h-[600px] mx-auto";
+          else if (isFacebook) containerClass = "aspect-[4/3] max-h-[500px] mx-auto";
+
+          return (
+            <div className="relative bg-stone-100 overflow-hidden">
               <div className={containerClass}>
                 <iframe 
                   src={embedUrl} 
@@ -128,29 +131,41 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onAu
                   loading="lazy"
                 />
               </div>
-            );
-          }
-          if (article.imageUrl.match(/\.(mp4|webm|ogg|mov|avi|mkv)(?:\?.*)?$/i)) {
-            return (
+            </div>
+          );
+        }
+
+        if (isVideoUrl(mediaUrl)) {
+          return (
+            <div className="relative bg-stone-900 overflow-hidden">
               <video 
-                src={article.imageUrl} 
+                src={mediaUrl} 
                 className="w-full h-auto max-h-[70vh] block mx-auto"
                 controls
+                playsInline
+                preload="metadata"
                 onClick={(e) => e.stopPropagation()}
               />
-            );
-          }
-          return (
+            </div>
+          );
+        }
+
+        return (
+          <div className="relative bg-stone-100 overflow-hidden">
             <img 
-              src={article.imageUrl} 
+              src={mediaUrl} 
               alt={article.title} 
               className="w-full h-auto block transition-transform duration-500 hover:scale-[1.02]"
               referrerPolicy="no-referrer"
               loading="lazy"
+              onError={(e) => {
+                // Se l'immagine non è raggiungibile, nascondi l'elemento per non mostrare icone spezzate
+                (e.currentTarget as HTMLElement).style.display = 'none';
+              }}
             />
-          );
-        })()}
-      </div>
+          </div>
+        );
+      })()}
 
       {/* Social Actions */}
       <div className="p-2 border-t border-stone-50">
