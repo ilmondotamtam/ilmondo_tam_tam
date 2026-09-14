@@ -31,7 +31,9 @@ function validateQuery<T extends z.ZodTypeAny>(schema: T) {
         details: issues.map((e: any) => `${e.path?.join('.') || 'field'}: ${e.message}`)
       });
     }
-    req.query = result.data as any;
+    if (result.data && typeof result.data === 'object') {
+      Object.assign(req.query, result.data);
+    }
     next();
   };
 }

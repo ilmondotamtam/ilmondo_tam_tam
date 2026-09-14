@@ -385,11 +385,13 @@ const App: React.FC = () => {
       if (error) throw error;
 
       if (profile) {
+        const rawRole = (profile.role || 'AUTHOR').toUpperCase();
+        const validRole = (['ADMIN', 'AUTHOR', 'READER', 'GESTOR'].includes(rawRole) ? rawRole : 'AUTHOR') as UserRole;
         setUser({
           id: profile.id,
           username: profile.username,
           email: profile.email,
-          role: profile.role as UserRole,
+          role: validRole,
           avatar: profile.avatar,
           firstName: profile.first_name,
           lastName: profile.last_name,
@@ -414,6 +416,16 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Profile Sync Error:", err);
+    }
+  };
+
+  const formatUserRole = (role: UserRole | string) => {
+    switch ((role || '').toUpperCase()) {
+      case 'ADMIN': return 'Amministratore';
+      case 'GESTOR': return 'Gestore';
+      case 'AUTHOR': return 'Autore';
+      case 'READER': return 'Lettore';
+      default: return role || 'Autore';
     }
   };
 
@@ -1518,7 +1530,9 @@ const App: React.FC = () => {
                       <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-2 mx-auto transition-all" alt="Profile" referrerPolicy="no-referrer" />
                       <h4 className="text-lg font-bold newspaper-font mb-1 group-hover:text-red-600 transition-colors">{user.firstName} {user.lastName}</h4>
                     </div>
-                    <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6">{user.role}</span>
+                    <span className="inline-block px-2.5 py-1 text-[10px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6 shadow-sm">
+                      {formatUserRole(user.role)} <span className="opacity-75 text-[8px]">({user.role})</span>
+                    </span>
                     
                     <button 
                       onClick={() => setIsMessagesModalOpen(true)}
@@ -2280,6 +2294,14 @@ const App: React.FC = () => {
                     className="w-full p-3 bg-stone-50 border-2 border-stone-100 rounded-lg text-sm text-stone-400 cursor-not-allowed" 
                     value={user.email} 
                   />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 mb-1 block tracking-widest">Ruolo Utente / Permessi</label>
+                  <div className="w-full p-3 bg-stone-50 border-2 border-stone-100 rounded-lg text-sm text-stone-800 font-bold flex items-center justify-between">
+                    <span>{formatUserRole(user.role)}</span>
+                    <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-stone-800 text-white rounded">{user.role}</span>
+                  </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3">
