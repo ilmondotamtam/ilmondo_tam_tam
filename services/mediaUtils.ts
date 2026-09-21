@@ -3,45 +3,74 @@
  * per YouTube, TikTok, Instagram, Facebook e file video diretti.
  */
 
+export const getYouTubeVideoId = (url?: string | null): string | null => {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  try {
+    if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be') || trimmed.includes('youtube-nocookie.com')) {
+      // 1. Formato breve youtu.be/VIDEO_ID
+      const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/i);
+      if (shortMatch) return shortMatch[1];
+
+      // 2. Shorts youtube.com/shorts/VIDEO_ID
+      const shortsMatch = trimmed.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i);
+      if (shortsMatch) return shortsMatch[1];
+
+      // 3. Embed già formato
+      const embedMatch = trimmed.match(/youtube(?:-nocookie)?\.com\/embed\/([a-zA-Z0-9_-]{11})/i);
+      if (embedMatch) return embedMatch[1];
+
+      // 4. Live youtube.com/live/VIDEO_ID
+      const liveMatch = trimmed.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/i);
+      if (liveMatch) return liveMatch[1];
+
+      // 5. Standard watch?v=VIDEO_ID
+      const vMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/i);
+      if (vMatch) return vMatch[1];
+    }
+  } catch (_) {}
+
+  return null;
+};
+
+export const isYouTubeUrl = (url?: string | null): boolean => {
+  return !!getYouTubeVideoId(url);
+};
+
 export const getEmbedUrl = (url?: string | null): string | null => {
   if (!url || typeof url !== 'string') return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
 
   // 1. YouTube (supporta watch?v=, youtu.be, shorts, embed, live, parametri aggiuntivi)
-  try {
-    if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) {
-      // Controllo formato breve youtu.be/VIDEO_ID
-      const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/i);
-      if (shortMatch) {
-        return `https://www.youtube.com/embed/${shortMatch[1]}`;
+  const ytVideoId = getYouTubeVideoId(trimmed);
+  if (ytVideoId) {
+    // Estrazione eventuale timestamp di inizio (t= o start=)
+    let startParam = '';
+    const timeMatch = trimmed.match(/[?&](?:t|start)=([0-9hms]+)/i);
+    if (timeMatch) {
+      const rawTime = timeMatch[1];
+      let seconds = 0;
+      if (/^\d+$/.test(rawTime)) {
+        seconds = parseInt(rawTime, 10);
+      } else {
+        const h = rawTime.match(/(\d+)h/i);
+        const m = rawTime.match(/(\d+)m/i);
+        const s = rawTime.match(/(\d+)s/i);
+        if (h) seconds += parseInt(h[1], 10) * 3600;
+        if (m) seconds += parseInt(m[1], 10) * 60;
+        if (s) seconds += parseInt(s[1], 10);
       }
-
-      // Controllo shorts youtube.com/shorts/VIDEO_ID
-      const shortsMatch = trimmed.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i);
-      if (shortsMatch) {
-        return `https://www.youtube.com/embed/${shortsMatch[1]}`;
-      }
-
-      // Controllo embed già formato
-      const embedMatch = trimmed.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i);
-      if (embedMatch) {
-        return `https://www.youtube.com/embed/${embedMatch[1]}`;
-      }
-
-      // Controllo live
-      const liveMatch = trimmed.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/i);
-      if (liveMatch) {
-        return `https://www.youtube.com/embed/${liveMatch[1]}`;
-      }
-
-      // Controllo standard watch?v=VIDEO_ID (gestisce qualsiasi posizione del parametro v)
-      const vMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/i);
-      if (vMatch) {
-        return `https://www.youtube.com/embed/${vMatch[1]}`;
+      if (seconds > 0) {
+        startParam = `&start=${seconds}`;
       }
     }
-  } catch (_) {}
+
+    // Usiamo il dominio standard youtube.com/embed con rel=0 per massima compatibilità
+    return `https://www.youtube.com/embed/${ytVideoId}?rel=0${startParam}`;
+  }
 
   // 2. Instagram (post, reel, tv)
   try {

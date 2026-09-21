@@ -7,14 +7,19 @@ import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { saveMediaToAruba } from './server/arubaStorage';
 import { arubaRouter } from './server/arubaRoutes';
+import { compressVideoWithVp9 } from './server/videoCompressionService';
 
 const app = express();
 const PORT = 3000;
 
 // Protezione HTTP OWASP con Helmet
+// Configurata per consentire anteprime iframe (YouTube/TikTok), prevenendo l'Errore 153 di YouTube (richiede Referrer valido)
 app.use(helmet({
   contentSecurityPolicy: false, // Disabilitato per consentire anteprime iframe, video esterni (TikTok/YouTube) e Vite
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
 
 app.use(cors());
@@ -57,7 +62,7 @@ const upload = multer({
   }
 });
 
-// Endpoint di upload esclusivo per Aruba Business (mediamag/immamag e mediamag/vidmag)
+// Endpoint di upload esclusivo per Aruba Business (mediamag/immamag, mediamag/vidmag e mediamag/avatar)
 app.post('/api/upload', (req, res, next) => {
   upload.single('file')(req, res, (err: any) => {
     if (err) {
@@ -78,8 +83,20 @@ app.post('/api/upload', (req, res, next) => {
     const ext = path.extname(req.file.originalname || '').toLowerCase().replace(/^\./, '');
     const mime = (req.file.mimetype || '').toLowerCase();
     const rawCategory = req.body?.mediaCategory;
-    const isVideo = rawCategory === 'video' || mime.startsWith('video/') || VALID_VIDEO_EXTS.has(ext) || mime === 'application/ogg' || mime === 'application/x-matroska';
-    const mediaCategory: 'image' | 'video' = isVideo ? 'video' : 'image';
+    const requestedSubfolder = req.body?.subfolder;
+
+    let targetSubfolder: 'immamag' | 'vidmag' | 'avatar' = 'immamag';
+    if (requestedSubfolder === 'avatar' || rawCategory === 'avatar' || requestedSubfolder === 'header' || rawCategory === 'header') {
+      targetSubfolder = 'avatar';
+    } else if (requestedSubfolder === 'vidmag' || rawCategory === 'video' || mime.startsWith('video/') || VALID_VIDEO_EXTS.has(ext) || mime === 'application/ogg' || mime === 'application/x-matroska') {
+      targetSubfolder = 'vidmag';
+    } else {
+      targetSubfolder = 'immamag';
+    }
+
+    const isVideo = targetSubfolder === 'vidmag';
+    const isAvatarOrHeader = targetSubfolder === 'avatar';
+    const mediaCategory: 'image' | 'video' | 'avatar' | 'header' = isAvatarOrHeader ? 'avatar' : (isVideo ? 'video' : 'image');
 
     // Normalizzazione MIME type se non specifico
     let effectiveMime = req.file.mimetype;
@@ -91,12 +108,47 @@ app.post('/api/upload', (req, res, next) => {
       }
     }
 
+    let uploadBuffer = req.file.buffer;
+    let uploadFilename = req.file.originalname;
+    let uploadMime = effectiveMime;
+    let compressionSavings = 0;
+
+    // Compressione video obbligatoria in WebM VP9 con libreria libvpx-vp9 a 2 Megabit/s
+    if (isVideo) {
+      try {
+        console.info(JSON.stringify({
+          level: 'info',
+          message: 'Avvio transcodifica WebM VP9',
+          encoder: 'libvpx-vp9',
+          bitrate: '2M',
+          filename: req.file.originalname,
+          sizeKb: Math.round(req.file.buffer.length / 1024)
+        }));
+
+        const compResult = await compressVideoWithVp9(req.file.buffer, req.file.originalname, {
+          videoBitrate: '2M'
+        });
+
+        uploadBuffer = compResult.compressedBuffer;
+        uploadFilename = compResult.filename;
+        uploadMime = 'video/webm';
+        compressionSavings = compResult.savingsPercent;
+      } catch (compError: any) {
+        console.warn(JSON.stringify({
+          level: 'warn',
+          message: 'Compressione libvpx-vp9 non riuscita, procedo con file originale',
+          error: compError.message
+        }));
+      }
+    }
+
     const result = await saveMediaToAruba(
-      req.file.buffer,
-      req.file.originalname,
-      effectiveMime,
+      uploadBuffer,
+      uploadFilename,
+      uploadMime,
       mediaCategory,
-      req.headers.host
+      req.headers.host,
+      targetSubfolder
     );
 
     res.json({
@@ -106,6 +158,9 @@ app.post('/api/upload', (req, res, next) => {
       path: result.path,
       size: result.size,
       storageType: result.storageType,
+      codec: isVideo ? 'libvpx-vp9' : undefined,
+      bitrate: isVideo ? '2M' : undefined,
+      savingsPercent: isVideo ? compressionSavings : undefined,
       warning: result.warning
     });
   } catch (error: any) {
@@ -113,6 +168,50 @@ app.post('/api/upload', (req, res, next) => {
     res.status(500).json({
       error: 'Errore durante il salvataggio su Aruba Business.',
       details: error.message || String(error)
+    });
+  }
+});
+
+// Endpoint dedicato per la compressione di video in WebM VP9 con libreria esclusiva libvpx-vp9 a 2 Megabit/s
+app.post('/api/compress-video', (req, res, next) => {
+  upload.single('file')(req, res, (err: any) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'Errore upload file.' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nessun file video fornito.' });
+    }
+
+    const mime = (req.file.mimetype || '').toLowerCase();
+    const ext = path.extname(req.file.originalname || '').toLowerCase().replace(/^\./, '');
+    const isVideo = mime.startsWith('video/') || VALID_VIDEO_EXTS.has(ext);
+
+    if (!isVideo) {
+      return res.status(400).json({ error: 'Il file inviato non è un formato video supportato.' });
+    }
+
+    const compResult = await compressVideoWithVp9(req.file.buffer, req.file.originalname, {
+      videoBitrate: '2M'
+    });
+
+    res.setHeader('Content-Type', 'video/webm');
+    res.setHeader('Content-Disposition', `inline; filename="${compResult.filename}"`);
+    res.setHeader('X-Original-Size', compResult.originalSize.toString());
+    res.setHeader('X-Compressed-Size', compResult.compressedSize.toString());
+    res.setHeader('X-Savings-Percent', compResult.savingsPercent.toString());
+    res.setHeader('X-Codec-Library', 'libvpx-vp9');
+    res.setHeader('X-Target-Bitrate', '2Mbps');
+
+    return res.send(compResult.compressedBuffer);
+  } catch (err: any) {
+    console.error('Errore durante compressione video con libvpx-vp9:', err);
+    return res.status(500).json({
+      error: 'Compressione video WebM VP9 fallita.',
+      details: err.message || String(err)
     });
   }
 });

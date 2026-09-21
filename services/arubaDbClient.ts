@@ -63,63 +63,127 @@ function saveStoredSession(session: SessionData | null) {
   }
 }
 
+/**
+ * Esegue fetch HTTP verso gli endpoint API gestendo credenziali iframe,
+ * intercettazioni di proxy Cloud Run / Cookie check e parsing sicuro degli errori.
+ */
+async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<any> {
+  const options: RequestInit = {
+    credentials: 'include',
+    ...init,
+    headers: {
+      'Accept': 'application/json',
+      ...(init?.headers || {})
+    }
+  };
+
+  const res = await fetch(input, options);
+  const text = await res.text();
+  const trimmedText = text.trim();
+
+  // Rilevamento pagina Cookie check del proxy Cloud Run / preview AI Studio o risposta HTML di errore
+  const isHtml = 
+    trimmedText.toLowerCase().startsWith('<!doctype') ||
+    trimmedText.toLowerCase().startsWith('<html') ||
+    trimmedText.toLowerCase().includes('<html') ||
+    trimmedText.toLowerCase().includes('<title>500') ||
+    trimmedText.toLowerCase().includes('<title>502') ||
+    trimmedText.toLowerCase().includes('<title>503') ||
+    trimmedText.toLowerCase().includes('<title>504') ||
+    trimmedText.includes('Cookie check') ||
+    trimmedText.includes('action required to load your app') ||
+    trimmedText.includes('AUTH_FLOW_TEST_COOKIE_NAME') ||
+    trimmedText.includes(':root {');
+
+  if (isHtml) {
+    if (res.status >= 500) {
+      throw new Error(`Servizio momentaneamente non disponibile (${res.status}). Riprova a breve.`);
+    }
+    throw new Error("L'ambiente iframe richiede autorizzazione per i cookie di sessione. Ricarica la pagina o aprila in una nuova scheda.");
+  }
+
+  let data: any = null;
+  try {
+    data = JSON.parse(text);
+  } catch (_) {
+    throw new Error(`Risposta non valida dal server (${res.status})`);
+  }
+
+  if (!res.ok) {
+    const detailMsg = Array.isArray(data?.details) && data.details.length > 0
+      ? `: ${data.details.join('; ')}`
+      : (data?.error ? `: ${data.error}` : '');
+    const err = new Error(data?.message || data?.error || `Errore richiesta API${detailMsg}`);
+    (err as any).data = data;
+    throw err;
+  }
+
+  return data;
+}
+
 export const arubaAuth = {
   async signUp(params: { email: string; password: string; options?: { data?: any } }) {
     const { email, password, options } = params;
     const meta = options?.data || {};
 
-    const response = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        password,
-        first_name: meta.first_name,
-        last_name: meta.last_name,
-        birth_date: meta.birth_date,
-        username: meta.username,
-        privacy_accepted: meta.privacy_accepted ?? true,
-        contract_accepted: meta.contract_accepted ?? true
-      })
-    });
+    try {
+      const json = await apiFetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          first_name: meta.first_name,
+          last_name: meta.last_name,
+          birth_date: meta.birth_date,
+          username: meta.username,
+          privacy_accepted: meta.privacy_accepted ?? true,
+          contract_accepted: meta.contract_accepted ?? true
+        })
+      });
 
-    const json = await response.json();
-    if (!response.ok || !json.success) {
-      return { data: null, error: { message: json.error || 'Errore registrazione su MySQL Aruba' } };
+      if (!json.success) {
+        return { data: null, error: { message: json.error || 'Errore registrazione su MySQL Aruba' } };
+      }
+
+      const session: SessionData = {
+        user: json.user,
+        token: json.token
+      };
+
+      saveStoredSession(session);
+      notifyAuthListeners('SIGNED_IN', session);
+
+      return { data: { user: json.user, session }, error: null };
+    } catch (err: any) {
+      return { data: null, error: { message: err.message || 'Errore registrazione su MySQL Aruba' } };
     }
-
-    const session: SessionData = {
-      user: json.user,
-      token: json.token
-    };
-
-    saveStoredSession(session);
-    notifyAuthListeners('SIGNED_IN', session);
-
-    return { data: { user: json.user, session }, error: null };
   },
 
   async signInWithPassword(params: { email?: string; username?: string; password: string }) {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params)
-    });
+    try {
+      const json = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
 
-    const json = await response.json();
-    if (!response.ok || !json.success) {
-      return { data: null, error: { message: json.error || 'Credenziali non valide su MySQL Aruba' } };
+      if (!json.success) {
+        return { data: null, error: { message: json.error || 'Credenziali non valide su MySQL Aruba' } };
+      }
+
+      const session: SessionData = {
+        user: json.user,
+        token: json.token
+      };
+
+      saveStoredSession(session);
+      notifyAuthListeners('SIGNED_IN', session);
+
+      return { data: { user: json.user, session }, error: null };
+    } catch (err: any) {
+      return { data: null, error: { message: err.message || 'Credenziali non valide su MySQL Aruba' } };
     }
-
-    const session: SessionData = {
-      user: json.user,
-      token: json.token
-    };
-
-    saveStoredSession(session);
-    notifyAuthListeners('SIGNED_IN', session);
-
-    return { data: { user: json.user, session }, error: null };
   },
 
   async signOut(options?: { scope?: string }) {
@@ -140,18 +204,17 @@ export const arubaAuth = {
     }
 
     if (params.password) {
-      const response = await fetch('/api/auth/update-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: session.user.id,
-          new_password: params.password
-        })
-      });
-
-      const json = await response.json();
-      if (!response.ok || !json.success) {
-        return { data: null, error: { message: json.error || 'Errore aggiornamento password su MySQL Aruba' } };
+      try {
+        await apiFetch('/api/auth/update-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: session.user.id,
+            new_password: params.password
+          })
+        });
+      } catch (err: any) {
+        return { data: null, error: { message: err.message || 'Errore aggiornamento password su MySQL Aruba' } };
       }
     }
 
@@ -159,36 +222,32 @@ export const arubaAuth = {
   },
 
   async resetPasswordForEmail(email: string, options?: { redirectTo?: string }) {
-    const response = await fetch('/api/auth/forgot-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, redirectTo: options?.redirectTo })
-    });
-
-    const json = await response.json();
-    if (!response.ok || !json.success) {
-      return { data: null, error: { message: json.error || 'Errore richiesta recupero password' } };
+    try {
+      const json = await apiFetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, redirectTo: options?.redirectTo })
+      });
+      return { data: json, error: null };
+    } catch (err: any) {
+      return { data: null, error: { message: err.message || 'Errore richiesta recupero password' } };
     }
-
-    return { data: json, error: null };
   },
 
   async resetPassword(params: { token: string; new_password: string }) {
-    const response = await fetch('/api/auth/reset-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: params.token,
-        new_password: params.new_password
-      })
-    });
-
-    const json = await response.json();
-    if (!response.ok || !json.success) {
-      return { data: null, error: { message: json.error || 'Token di recupero non valido o scaduto' } };
+    try {
+      const json = await apiFetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: params.token,
+          new_password: params.new_password
+        })
+      });
+      return { data: json, error: null };
+    } catch (err: any) {
+      return { data: null, error: { message: err.message || 'Token di recupero non valido o scaduto' } };
     }
-
-    return { data: json, error: null };
   },
 
   async resend(params: { type: string; email: string }) {
@@ -255,6 +314,10 @@ class TableQueryBuilder {
 
   or(conditions: string) {
     // Es: "sender_id.eq.xxx,receiver_id.eq.xxx"
+    const match = conditions.match(/eq\.([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      this.filters.push({ field: 'user_id', op: '=', value: match[1] });
+    }
     return this;
   }
 
@@ -322,27 +385,33 @@ class TableQueryBuilder {
       // 1. Tabella ARTICLES
       if (this.tableName === 'articles') {
         if (this.insertPayload) {
-          const res = await fetch('/api/articles', {
+          const payload = {
+            ...this.insertPayload,
+            title: (this.insertPayload.title || '').trim(),
+            content: (this.insertPayload.content || '').trim(),
+            category: (this.insertPayload.category || 'Opinioni').trim(),
+            author_name: (this.insertPayload.author_name || this.insertPayload.authorName || '').trim() || 'Autore',
+            author_id: this.insertPayload.author_id || this.insertPayload.authorId || currentUserId || null,
+            image_url: this.insertPayload.image_url || this.insertPayload.imageUrl || null
+          };
+
+          const json = await apiFetch('/api/articles', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.insertPayload)
+            body: JSON.stringify(payload)
           });
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error || 'Errore inserimento articolo');
           return { data: json, error: null };
         }
 
         if (this.isDelete) {
           const idFilter = this.filters.find(f => f.field === 'id')?.value;
           if (idFilter) {
-            const res = await fetch(`/api/articles/${idFilter}`, { method: 'DELETE' });
-            const json = await res.json();
+            const json = await apiFetch(`/api/articles/${idFilter}`, { method: 'DELETE' });
             return { data: json, error: null };
           }
         }
 
-        const res = await fetch('/api/articles');
-        const json = await res.json();
+        const json = await apiFetch('/api/articles');
         let list = (json.data || []).map((a: any) => ({
           ...a,
           imageUrl: a.imageUrl || a.image_url || '',
@@ -365,18 +434,17 @@ class TableQueryBuilder {
 
       // 2. Tabella TESTATA
       if (this.tableName === 'testata') {
-        if (this.insertPayload) {
-          const res = await fetch('/api/testata', {
+        const payload = this.insertPayload || this.updatePayload;
+        if (payload) {
+          const json = await apiFetch('/api/testata', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.insertPayload)
+            body: JSON.stringify(payload)
           });
-          const json = await res.json();
           return { data: json, error: null };
         }
 
-        const res = await fetch('/api/testata');
-        const json = await res.json();
+        const json = await apiFetch('/api/testata');
         return { data: json.data || { imma_testata: null }, error: null };
       }
 
@@ -384,41 +452,63 @@ class TableQueryBuilder {
       if (this.tableName === 'utenti') {
         if (this.updatePayload) {
           const id = this.filters.find(f => f.field === 'id')?.value || currentUserId;
-          const res = await fetch('/api/utenti/profile', {
+          const json = await apiFetch('/api/utenti/profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id, ...this.updatePayload })
           });
-          const json = await res.json();
           return { data: json, error: null };
         }
 
-        const idFilter = this.filters.find(f => f.field === 'id')?.value;
-        if (idFilter) {
-          const res = await fetch(`/api/utenti/profile?user_id=${encodeURIComponent(idFilter)}`);
-          const json = await res.json();
-          const user = json.data;
-          if (this.isSingle || this.isMaybeSingle) {
-            return { data: user || null, error: null };
+        // Filtro batch IN su id: es. .in('id', userIds)
+        const inFilter = this.filters.find(f => f.field === 'id' && f.op === 'IN');
+        if (inFilter) {
+          const rawIds = Array.isArray(inFilter.value) ? inFilter.value : [inFilter.value];
+          const cleanIds = rawIds.filter((id: any) => id && typeof id === 'string' && id !== 'undefined' && id !== 'null' && id.trim() !== '');
+          if (cleanIds.length === 0) {
+            return { data: [], error: null };
           }
-          return { data: user ? [user] : [], error: null };
+          const json = await apiFetch('/api/utenti/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: cleanIds })
+          });
+          return { data: json.data || [], error: null };
+        }
+
+        const idFilter = this.filters.find(f => f.field === 'id' && (f.op === '=' || !f.op))?.value;
+        if (idFilter) {
+          if (!idFilter || idFilter === 'undefined' || idFilter === 'null') {
+            return { data: this.isSingle || this.isMaybeSingle ? null : [], error: null };
+          }
+          try {
+            const json = await apiFetch(`/api/utenti/profile?user_id=${encodeURIComponent(idFilter)}`);
+            const user = json.data;
+            if (this.isSingle || this.isMaybeSingle) {
+              return { data: user || null, error: null };
+            }
+            return { data: user ? [user] : [], error: null };
+          } catch {
+            if (this.isSingle || this.isMaybeSingle) {
+              return { data: null, error: null };
+            }
+            return { data: [], error: null };
+          }
         }
 
         // Cerca utenti
-        const res = await fetch(`/api/utenti/search?exclude_id=${encodeURIComponent(currentUserId || '')}`);
-        const json = await res.json();
+        const json = await apiFetch(`/api/utenti/search?exclude_id=${encodeURIComponent(currentUserId || '')}`);
         return { data: json.data || [], error: null };
       }
 
       // 4. Tabella COMMENTS
       if (this.tableName === 'comments') {
         if (this.insertPayload) {
-          const res = await fetch('/api/comments', {
+          const json = await apiFetch('/api/comments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(this.insertPayload)
           });
-          const json = await res.json();
           return { data: json.data, error: null };
         }
         return { data: [], error: null };
@@ -427,24 +517,22 @@ class TableQueryBuilder {
       // 5. Tabella APPREZZAMENTI (Likes)
       if (this.tableName === 'apprezzamenti') {
         if (this.insertPayload) {
-          const res = await fetch('/api/likes/toggle', {
+          const json = await apiFetch('/api/likes/toggle', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(this.insertPayload)
           });
-          const json = await res.json();
           return { data: json, error: null };
         }
         if (this.isDelete) {
           const articleId = this.filters.find(f => f.field === 'article_id')?.value;
           const userId = this.filters.find(f => f.field === 'user_id')?.value || currentUserId;
           if (articleId && userId) {
-            const res = await fetch('/api/likes/toggle', {
+            const json = await apiFetch('/api/likes/toggle', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ article_id: articleId, user_id: userId })
             });
-            const json = await res.json();
             return { data: json, error: null };
           }
         }
@@ -454,48 +542,66 @@ class TableQueryBuilder {
       // 6. Tabella CONTATTI
       if (this.tableName === 'contatti') {
         if (this.insertPayload) {
-          const res = await fetch('/api/contatti/request', {
+          const json = await apiFetch('/api/contatti/request', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(this.insertPayload)
           });
-          const json = await res.json();
           return { data: json, error: null };
         }
 
         if (this.updatePayload) {
           const id = this.filters.find(f => f.field === 'id')?.value;
-          const res = await fetch(`/api/contatti/${id}`, {
+          const json = await apiFetch(`/api/contatti/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(this.updatePayload)
           });
-          const json = await res.json();
           return { data: json, error: null };
         }
 
         if (this.isDelete) {
           const id = this.filters.find(f => f.field === 'id')?.value;
-          const res = await fetch(`/api/contatti/${id}`, { method: 'DELETE' });
-          const json = await res.json();
+          const json = await apiFetch(`/api/contatti/${id}`, { method: 'DELETE' });
           return { data: json, error: null };
         }
 
-        const uid = currentUserId || '';
-        const res = await fetch(`/api/contatti?user_id=${encodeURIComponent(uid)}`);
-        const json = await res.json();
-        return { data: json.data || [], error: null };
+        let uid = currentUserId || '';
+        if (!uid) {
+          const idFilter = this.filters.find(f => f.field === 'user_id' || f.field === 'sender_id' || f.field === 'receiver_id')?.value;
+          if (idFilter && typeof idFilter === 'string') uid = idFilter;
+        }
+
+        if (!uid) {
+          return { data: [], error: null };
+        }
+
+        try {
+          const json = await apiFetch(`/api/contatti?user_id=${encodeURIComponent(uid)}`);
+          const list = (json?.data || []).map((c: any) => ({
+            ...c,
+            sender_id: c.sender_id || c.senderId,
+            receiver_id: c.receiver_id || c.receiverId,
+            senderId: c.senderId || c.sender_id,
+            receiverId: c.receiverId || c.receiver_id,
+            created_at: c.created_at || (c.createdAt ? new Date(c.createdAt).toISOString() : new Date().toISOString()),
+            updated_at: c.updated_at || (c.updatedAt ? new Date(c.updatedAt).toISOString() : new Date().toISOString())
+          }));
+          return { data: list, error: null };
+        } catch (fetchErr: any) {
+          console.warn('[Aruba DB] Recupero contatti temporaneamente non disponibile:', fetchErr.message);
+          return { data: [], error: null };
+        }
       }
 
       // 7. Tabella MESSAGGI
       if (this.tableName === 'messaggi') {
         if (this.insertPayload) {
-          const res = await fetch('/api/messaggi/send', {
+          const json = await apiFetch('/api/messaggi/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(this.insertPayload)
           });
-          const json = await res.json();
           return { data: json, error: null };
         }
 
@@ -503,20 +609,42 @@ class TableQueryBuilder {
           const senderId = this.filters.find(f => f.field === 'sender_id')?.value;
           const receiverId = this.filters.find(f => f.field === 'receiver_id')?.value || currentUserId;
           if (senderId && receiverId) {
-            const res = await fetch('/api/messaggi/read', {
+            const json = await apiFetch('/api/messaggi/read', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ receiver_id: receiverId, sender_id: senderId })
             });
-            const json = await res.json();
             return { data: json, error: null };
           }
         }
 
-        const uid = currentUserId || '';
-        const res = await fetch(`/api/messaggi?user_id=${encodeURIComponent(uid)}`);
-        const json = await res.json();
-        return { data: json.data || [], error: null };
+        let uid = currentUserId || '';
+        if (!uid) {
+          const idFilter = this.filters.find(f => f.field === 'user_id' || f.field === 'sender_id' || f.field === 'receiver_id')?.value;
+          if (idFilter && typeof idFilter === 'string') uid = idFilter;
+        }
+
+        if (!uid) {
+          return { data: [], error: null };
+        }
+
+        try {
+          const json = await apiFetch(`/api/messaggi?user_id=${encodeURIComponent(uid)}`);
+          const list = (json?.data || []).map((m: any) => ({
+            ...m,
+            sender_id: m.sender_id || m.senderId,
+            receiver_id: m.receiver_id || m.receiverId,
+            senderId: m.senderId || m.sender_id,
+            receiverId: m.receiverId || m.receiver_id,
+            is_read: typeof m.is_read !== 'undefined' ? m.is_read : (typeof m.isRead !== 'undefined' ? m.isRead : false),
+            isRead: typeof m.isRead !== 'undefined' ? m.isRead : (typeof m.is_read !== 'undefined' ? m.is_read : false),
+            created_at: m.created_at || (m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString())
+          }));
+          return { data: list, error: null };
+        } catch (fetchErr: any) {
+          console.warn('[Aruba DB] Recupero messaggi temporaneamente non disponibile:', fetchErr.message);
+          return { data: [], error: null };
+        }
       }
 
       return { data: [], error: null };
@@ -573,11 +701,15 @@ export const arubaClient = {
       const rowId = params?.row_id;
       const session = getStoredSession();
       if (rowId && session?.user?.id) {
-        await fetch('/api/likes/toggle', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ article_id: rowId, user_id: session.user.id })
-        });
+        try {
+          await apiFetch('/api/likes/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ article_id: rowId, user_id: session.user.id })
+          });
+        } catch (e) {
+          console.error('[Aruba DB] Errore toggle likes rpc:', e);
+        }
       }
       return { data: null, error: null };
     }

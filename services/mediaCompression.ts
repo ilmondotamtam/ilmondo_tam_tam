@@ -149,17 +149,16 @@ export async function compressImage(
 }
 
 /**
- * Comprime un file video registrando nel formato WebM VP9 (risoluzione max 720p / 1.5 Mbps).
- * Utilizza WebM con codec VP9 (e audio Opus se presente nel video sorgente).
- * Se il browser non supporta la compressione runtime tramite MediaRecorder o in caso di errore,
- * restituisce il file originale senza bloccare l'upload.
+ * Comprime un file video nel formato WebM VP9 usando esclusivamente la libreria libvpx-vp9
+ * con un bitrate di 2 Megabit/s (2M), e impostazioni orientate alla massima velocità/prestazione
+ * (-deadline realtime, -cpu-used 8, -row-mt 1).
  */
 export async function compressVideo(
   file: File,
   onProgress?: (progressPercent: number) => void
 ): Promise<CompressionResult> {
-  // Se non è un video o è già molto piccolo (< 3MB), usalo direttamente
-  if (!file.type.startsWith('video/') || file.size < 3 * 1024 * 1024) {
+  // Se non è un video, usalo direttamente
+  if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|avi|mkv|wmv|flv)$/i)) {
     if (onProgress) onProgress(100);
     return {
       file,
@@ -169,272 +168,92 @@ export async function compressVideo(
     };
   }
 
-  // Verifica supporto MediaRecorder nel browser
-  if (typeof window === 'undefined' || !window.MediaRecorder) {
-    if (onProgress) onProgress(100);
-    return {
-      file,
-      originalSize: file.size,
-      compressedSize: file.size,
-      savingsPercent: 0
-    };
-  }
-
+  // Eseguiamo la compressione WebM VP9 con la libreria libvpx-vp9 a 2 Megabit/s tramite l'API backend
   return new Promise((resolve) => {
-    const videoUrl = URL.createObjectURL(file);
-    const video = document.createElement('video');
-    video.src = videoUrl;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file);
 
-    video.onloadedmetadata = async () => {
-      let audioCtx: AudioContext | null = null;
-      let bufferSourceNode: AudioBufferSourceNode | null = null;
-
-      const cleanup = () => {
-        try {
-          if (bufferSourceNode) {
-            bufferSourceNode.stop();
-            bufferSourceNode.disconnect();
-          }
-        } catch (_) {}
-        try {
-          if (audioCtx && audioCtx.state !== 'closed') {
-            audioCtx.close();
-          }
-        } catch (_) {}
-        URL.revokeObjectURL(videoUrl);
-      };
-
-      try {
-        const duration = video.duration;
-        if (!duration || duration <= 0 || !isFinite(duration)) {
-          cleanup();
-          resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
-          return;
-        }
-
-        // Risoluzione target (massimo 1280x720)
-        let targetWidth = video.videoWidth || 1280;
-        let targetHeight = video.videoHeight || 720;
-        const maxDim = 1280;
-
-        if (targetWidth > maxDim || targetHeight > maxDim) {
-          if (targetWidth > targetHeight) {
-            targetHeight = Math.round((targetHeight * maxDim) / targetWidth);
-            targetWidth = maxDim;
-          } else {
-            targetWidth = Math.round((targetWidth * maxDim) / targetHeight);
-            targetHeight = maxDim;
-          }
-        }
-
-        // Assicuriamo dimensioni pari per i codec video
-        targetWidth = targetWidth % 2 === 0 ? targetWidth : targetWidth - 1;
-        targetHeight = targetHeight % 2 === 0 ? targetHeight : targetHeight - 1;
-
-        const canvas = document.createElement('canvas');
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-          cleanup();
-          resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
-          return;
-        }
-
-        const canvasStream = canvas.captureStream(30); // 30 FPS
-        
-        // Estrazione e preservazione traccia audio originale (Opus per WebM)
-        let audioTrack: MediaStreamTrack | null = null;
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-
-        if (AudioContextClass) {
-          try {
-            audioCtx = new AudioContextClass();
-            if (audioCtx.state === 'suspended') {
-              await audioCtx.resume();
-            }
-
-            // Metodo 1: Decodifica diretta del buffer audio del file (massima fedeltà e sincronia senza dipendere da autoplay)
-            try {
-              const arrayBuf = await file.slice(0).arrayBuffer();
-              const decodedAudio = await audioCtx.decodeAudioData(arrayBuf);
-              if (decodedAudio && decodedAudio.numberOfChannels > 0) {
-                const destNode = audioCtx.createMediaStreamDestination();
-                bufferSourceNode = audioCtx.createBufferSource();
-                bufferSourceNode.buffer = decodedAudio;
-                bufferSourceNode.connect(destNode);
-                const tracks = destNode.stream.getAudioTracks();
-                if (tracks && tracks.length > 0) {
-                  audioTrack = tracks[0];
-                }
-              }
-            } catch (decErr) {
-              console.log('Decodifica diretta audio non supportata dal container, uso routing WebAudio:', decErr);
-            }
-
-            // Metodo 2: Se la decodifica diretta fallisce, cattura l'audio dall'elemento video
-            if (!audioTrack) {
-              video.muted = false; // Necessario per consentire il passaggio dell'audio nel graph WebAudio
-              video.volume = 1;
-              const sourceNode = audioCtx.createMediaElementSource(video);
-              const destNode = audioCtx.createMediaStreamDestination();
-              sourceNode.connect(destNode);
-              // Non connettiamo a audioCtx.destination per non far suonare gli altoparlanti dell'utente durante la compressione
-              const tracks = destNode.stream.getAudioTracks();
-              if (tracks && tracks.length > 0) {
-                audioTrack = tracks[0];
-              }
-            }
-          } catch (audioErr) {
-            console.warn('Inizializzazione WebAudio fallita:', audioErr);
-          }
-        }
-
-        // Metodo 3: Fallback cattura stream nativo se disponibile
-        if (!audioTrack) {
-          try {
-            const rawStream = (video as any).captureStream ? (video as any).captureStream() : ((video as any).mozCaptureStream ? (video as any).mozCaptureStream() : null);
-            if (rawStream && rawStream.getAudioTracks().length > 0) {
-              audioTrack = rawStream.getAudioTracks()[0];
-            }
-          } catch (_) {}
-        }
-
-        // Assembla lo stream con video e audio combinati
-        const combinedStream = new MediaStream([
-          canvasStream.getVideoTracks()[0],
-          ...(audioTrack ? [audioTrack] : [])
-        ]);
-
-        // Formati WebM VP9 supportati (con Opus se presente audio)
-        const vp9MimeTypes = audioTrack ? [
-          'video/webm;codecs=vp9,opus',
-          'video/webm;codecs=vp09.00.10.08,opus',
-          'video/webm;codecs=vp8,opus',
-          'video/webm;codecs=vp9',
-          'video/webm'
-        ] : [
-          'video/webm;codecs=vp9',
-          'video/webm;codecs=vp09.00.10.08',
-          'video/webm;codecs=vp8',
-          'video/webm'
-        ];
-        
-        const selectedMimeType = vp9MimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || (audioTrack ? 'video/webm;codecs=vp9,opus' : 'video/webm;codecs=vp9');
-        
-        // Bitrate target ottimizzato: 1.5 Mbps video in VP9 + 128 kbps audio in Opus
-        const recorderOptions: MediaRecorderOptions = {
-          mimeType: selectedMimeType,
-          videoBitsPerSecond: 1500000
-        };
-        if (audioTrack) {
-          recorderOptions.audioBitsPerSecond = 128000;
-        }
-
-        const mediaRecorder = new MediaRecorder(combinedStream, recorderOptions);
-
-        const chunks: Blob[] = [];
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            chunks.push(e.data);
-          }
-        };
-
-        mediaRecorder.onstop = () => {
-          cleanup();
-          const compressedBlob = new Blob(chunks, { type: 'video/webm' });
-
-          if (compressedBlob.size >= file.size || compressedBlob.size === 0) {
-            resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
-            return;
-          }
-
-          // File salvato sempre come contenitore .webm (VP9) con mimeType standard video/webm
-          const compressedFile = new File([compressedBlob], `video-${Date.now()}.webm`, {
-            type: 'video/webm',
-            lastModified: Date.now()
-          });
-
-          const savings = Math.round(((file.size - compressedBlob.size) / file.size) * 100);
-          if (onProgress) onProgress(100);
-
-          resolve({
-            file: compressedFile,
-            originalSize: file.size,
-            compressedSize: compressedBlob.size,
-            savingsPercent: Math.max(0, savings)
-          });
-        };
-
-        mediaRecorder.onerror = () => {
-          cleanup();
-          resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
-        };
-
-        // Avvia registrazione
-        mediaRecorder.start(250);
-
-        // Rendering loop
-        let animationFrameId: number;
-        const render = () => {
-          if (video.paused || video.ended) return;
-          ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-          
-          if (onProgress && duration > 0) {
-            const currentProg = Math.min(95, Math.round((video.currentTime / duration) * 100));
-            onProgress(currentProg);
-          }
-          
-          animationFrameId = requestAnimationFrame(render);
-        };
-
-        video.onended = () => {
-          cancelAnimationFrame(animationFrameId);
-          setTimeout(() => {
-            if (mediaRecorder.state !== 'inactive') {
-              mediaRecorder.stop();
-            }
-          }, 300);
-        };
-
-        // Timeout di sicurezza per evitare blocchi infiniti
-        setTimeout(() => {
-          if (mediaRecorder.state !== 'inactive') {
-            try {
-              mediaRecorder.stop();
-            } catch (e) {
-              // ignore
-            }
-          }
-        }, (duration + 5) * 1000);
-
-        if (bufferSourceNode) {
-          bufferSourceNode.start(0);
-        }
-
-        try {
-          await video.play();
-        } catch (playErr) {
-          // Se la riproduzione con audio viene bloccata dal browser per policy, riprova con muted
-          video.muted = true;
-          await video.play();
-        }
-        render();
-      } catch (err) {
-        console.warn('Video compression fallback to original:', err);
-        cleanup();
-        resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable && onProgress) {
+        // I primi 50% sono dedicati al caricamento del video sorgente verso il motore di transcodifica
+        const uploadPercent = Math.round((event.loaded / event.total) * 50);
+        onProgress(uploadPercent);
       }
-    };
+    });
 
-    video.onerror = () => {
-      URL.revokeObjectURL(videoUrl);
-      resolve({ file, originalSize: file.size, compressedSize: file.size, savingsPercent: 0 });
-    };
+    xhr.addEventListener('load', () => {
+      if (xhr.status === 200 && xhr.response) {
+        const compressedBlob = xhr.response as Blob;
+        const originalSize = parseInt(xhr.getResponseHeader('X-Original-Size') || `${file.size}`, 10);
+        const compressedSize = compressedBlob.size;
+        const savingsHeader = parseInt(xhr.getResponseHeader('X-Savings-Percent') || '0', 10);
+        const savingsPercent = savingsHeader || (originalSize > compressedSize ? Math.round(((originalSize - compressedSize) / originalSize) * 100) : 0);
+
+        const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || 'video';
+        const compressedFile = new File([compressedBlob], `${baseName}-${Date.now()}.webm`, {
+          type: 'video/webm',
+          lastModified: Date.now()
+        });
+
+        if (onProgress) onProgress(100);
+        resolve({
+          file: compressedFile,
+          originalSize,
+          compressedSize,
+          savingsPercent,
+          previewUrl: URL.createObjectURL(compressedBlob)
+        });
+      } else {
+        // Fallback: se il server restituisce errore o non supporta temporaneamente la transcodifica,
+        // ritorniamo il file originale senza interrompere il flusso dell'utente
+        console.warn('Compressione remota libvpx-vp9 non disponibile, utilizzo file originale:', xhr.statusText);
+        if (onProgress) onProgress(100);
+        resolve({
+          file,
+          originalSize: file.size,
+          compressedSize: file.size,
+          savingsPercent: 0
+        });
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      console.warn('Errore di rete durante compressione video, procedo con file originale');
+      if (onProgress) onProgress(100);
+      resolve({
+        file,
+        originalSize: file.size,
+        compressedSize: file.size,
+        savingsPercent: 0
+      });
+    });
+
+    xhr.addEventListener('abort', () => {
+      if (onProgress) onProgress(100);
+      resolve({
+        file,
+        originalSize: file.size,
+        compressedSize: file.size,
+        savingsPercent: 0
+      });
+    });
+
+    // Simula avanzamento transcodifica lato server dopo l'invio del file
+    xhr.upload.addEventListener('loadend', () => {
+      if (onProgress) {
+        let fakeProgress = 55;
+        const timer = setInterval(() => {
+          fakeProgress = Math.min(95, fakeProgress + 10);
+          onProgress(fakeProgress);
+          if (fakeProgress >= 95) clearInterval(timer);
+        }, 500);
+      }
+    });
+
+    xhr.open('POST', '/api/compress-video');
+    xhr.responseType = 'blob';
+    xhr.send(formData);
   });
 }
 
@@ -442,6 +261,7 @@ export async function compressVideo(
  * Esegue l'upload di un file multimediale su Aruba Business:
  * - Immagini -> cartella `mediamag/immamag`
  * - Video -> cartella `mediamag/vidmag`
+ * - Foto profilo / Avatar & Immagine Testata -> cartella `mediamag/avatar`
  * Applica preventivamente la compressione per massimizzare la velocità e ridurre lo spazio.
  */
 export async function uploadMediaToAruba(
@@ -495,84 +315,126 @@ export async function uploadMediaToAruba(
     }
   }
 
-  // Fase 2: Upload HTTP / FormData verso l'endpoint `/api/upload`
+  // Fase 2: Upload HTTP / FormData verso /api/upload con fallback automatico e trasparente su Aruba Business
   if (onProgress) onProgress(55, 'Caricamento del file in corso...');
 
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const formData = new FormData();
+  const isAvatarOrHeader = type === 'avatar' || type === 'header';
+  const mediaCategory = isAvatarOrHeader ? (type === 'header' ? 'header' : 'avatar') : (isVideo ? 'video' : 'image');
+  const targetSubfolder = isAvatarOrHeader ? 'avatar' : (isVideo ? 'vidmag' : 'immamag');
 
-    // Inviamo il file processato e i metadati di destinazione Aruba
-    formData.append('file', processedFile);
-    formData.append('mediaCategory', isVideo ? 'video' : 'image');
-    formData.append('subfolder', isVideo ? 'vidmag' : 'immamag');
+  const executeXhrUpload = (endpoint: string, isDirectAruba: boolean): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
 
-    xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable && onProgress) {
-        const uploadPercent = Math.round((event.loaded / event.total) * 100);
-        // Mappiamo dal 55% al 100%
-        const totalProgress = Math.round(55 + (uploadPercent * 0.45));
-        onProgress(
-          totalProgress,
-          `Caricamento in corso: ${uploadPercent}%`
-        );
-      }
-    });
+      formData.append('file', processedFile);
+      formData.append('mediaCategory', mediaCategory);
+      formData.append('subfolder', targetSubfolder);
 
-    xhr.addEventListener('load', () => {
-      let isJson = false;
-      let data: any = null;
-      try {
-        data = JSON.parse(xhr.responseText);
-        isJson = true;
-      } catch (_) {
-        isJson = false;
+      // Se endpoint locale, impostiamo le credenziali per supportare i cookie dell'ambiente iframe
+      if (!isDirectAruba) {
+        xhr.withCredentials = true;
       }
 
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const returnedUrl = data?.url || data?.publicUrl || data?.path;
-        if (isJson && returnedUrl) {
-          resolve({
-            url: returnedUrl,
-            originalSize,
-            finalSize,
-            savingsPercent
-          });
-        } else if (!isJson && xhr.responseText && (xhr.responseText.startsWith('http://') || xhr.responseText.startsWith('https://') || xhr.responseText.startsWith('/mediamag/'))) {
-          resolve({
-            url: xhr.responseText.trim(),
-            originalSize,
-            finalSize,
-            savingsPercent
-          });
-        } else {
-          const msg = (isJson && data && (data.error || data.message || data.details))
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const uploadPercent = Math.round((event.loaded / event.total) * 100);
+          const totalProgress = Math.round(55 + (uploadPercent * 0.45));
+          onProgress(
+            totalProgress,
+            `Caricamento in corso (${isDirectAruba ? 'Aruba Business' : 'Server'}): ${uploadPercent}%`
+          );
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        const text = (xhr.responseText || '').trim();
+
+        // Rilevamento intercettazione proxy / Cloud Run "Cookie check" in iframe
+        const isHtmlOrCookieCheck =
+          text.includes('Cookie check') ||
+          text.includes('action required to load your app') ||
+          text.includes('AUTH_FLOW_TEST_COOKIE_NAME') ||
+          text.startsWith('<!doctype') ||
+          text.startsWith('<html') ||
+          text.includes(':root {');
+
+        if (isHtmlOrCookieCheck) {
+          return reject(new Error('PROXY_COOKIE_CHECK_INTERCEPTED'));
+        }
+
+        let data: any = null;
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          data = null;
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const returnedUrl = data?.url || data?.publicUrl || data?.path;
+          if (data && returnedUrl) {
+            return resolve(returnedUrl);
+          }
+          if (!data && text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('/mediamag/'))) {
+            return resolve(text);
+          }
+          const msg = (data && (data.error || data.message || data.details))
             ? (data.error || data.message || data.details)
-            : (xhr.responseText ? `Risposta inattesa dal server (${xhr.status}): ${xhr.responseText.replace(/<[^>]+>/g, ' ').slice(0, 100)}` : "Risposta del server non valida.");
-          reject(new Error(msg));
+            : `Risposta inattesa dal server (${xhr.status}): ${text.replace(/<[^>]+>/g, ' ').slice(0, 100)}`;
+          return reject(new Error(msg));
+        } else {
+          let errorMsg = `Errore caricamento (${xhr.status})`;
+          if (data) {
+            if (data.error) errorMsg = data.error;
+            if (data.details) errorMsg += ` - ${data.details}`;
+          } else if (text) {
+            const stripped = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
+            if (stripped) errorMsg += `: ${stripped}`;
+          }
+          return reject(new Error(errorMsg));
         }
-      } else {
-        let errorMsg = `Errore caricamento (${xhr.status})`;
-        if (isJson && data) {
-          if (data.error) errorMsg = data.error;
-          if (data.details) errorMsg += ` - ${data.details}`;
-        } else if (xhr.responseText) {
-          const stripped = xhr.responseText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
-          if (stripped) errorMsg += `: ${stripped}`;
-        }
-        reject(new Error(errorMsg));
-      }
-    });
+      });
 
-    xhr.addEventListener('error', () => {
-      reject(new Error("Errore di connessione durante l'invio al server."));
-    });
+      xhr.addEventListener('error', () => {
+        reject(new Error("Errore di rete durante il caricamento del file."));
+      });
 
-    xhr.addEventListener('abort', () => {
-      reject(new Error("Caricamento interrotto."));
-    });
+      xhr.addEventListener('abort', () => {
+        reject(new Error("Caricamento interrotto."));
+      });
 
-    xhr.open('POST', '/api/upload');
-    xhr.send(formData);
-  });
+      xhr.open('POST', endpoint);
+      xhr.send(formData);
+    });
+  };
+
+  const ARUBA_DIRECT_UPLOADER = 'https://www.mondotamtam.it/aruba-uploader.php';
+
+  try {
+    // 1. Tentativo primario: server Node proxy /api/upload
+    const uploadUrl = await executeXhrUpload('/api/upload', false);
+    return {
+      url: uploadUrl,
+      originalSize,
+      finalSize,
+      savingsPercent
+    };
+  } catch (primaryErr: any) {
+    console.warn('[Upload] Endpoint /api/upload non disponibile o intercettato da cookie check proxy:', primaryErr?.message);
+    if (onProgress) onProgress(65, 'Reindirizzamento verso lo storage diretto Aruba Business...');
+
+    try {
+      // 2. Fallback trasparente: upload diretto su hosting Aruba Business
+      const directUrl = await executeXhrUpload(ARUBA_DIRECT_UPLOADER, true);
+      return {
+        url: directUrl,
+        originalSize,
+        finalSize,
+        savingsPercent
+      };
+    } catch (directErr: any) {
+      console.error('[Upload] Errore anche durante il fallback diretto Aruba:', directErr);
+      throw new Error(`Errore durante il salvataggio del file su Aruba: ${directErr.message || primaryErr.message}`);
+    }
+  }
 }

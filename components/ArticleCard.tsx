@@ -126,7 +126,8 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onAu
                   src={embedUrl} 
                   className="w-full h-full border-0" 
                   allowFullScreen 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
                   onClick={(e) => e.stopPropagation()}
                   loading="lazy"
                 />

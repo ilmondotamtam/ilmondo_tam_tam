@@ -5,8 +5,8 @@ import { Client as FtpClient } from 'basic-ftp';
 import { z } from 'zod';
 
 export const UploadMetadataSchema = z.object({
-  mediaCategory: z.enum(['image', 'video']).default('image'),
-  subfolder: z.enum(['immamag', 'vidmag']).optional()
+  mediaCategory: z.enum(['image', 'video', 'avatar', 'header']).default('image'),
+  subfolder: z.enum(['immamag', 'vidmag', 'avatar', 'header']).optional()
 });
 
 export interface UploadResult {
@@ -64,9 +64,10 @@ function getHostCandidates(configuredHost?: string, baseUrl?: string): string[] 
 }
 
 /**
- * Salva un file nella destinazione Aruba Business via SSH / SFTP:
+ * Salva un file nella destinazione Aruba Business via SSH / SFTP / FTP:
  * - Immagini: cartella `mediamag/immamag/`
  * - Video: cartella `mediamag/vidmag/`
+ * - Foto profilo / Avatar: cartella `mediamag/avatar/`
  *
  * Include auto-discovery dei candidati DNS e fallback sicuro su storage locale
  * per prevenire blocchi durante la pubblicazione.
@@ -75,11 +76,19 @@ export async function saveMediaToAruba(
   fileBuffer: Buffer,
   originalFilename: string,
   mimeType: string,
-  mediaCategory: 'image' | 'video',
-  hostHeader?: string
+  mediaCategory: 'image' | 'video' | 'avatar' | 'header',
+  hostHeader?: string,
+  targetSubfolder?: 'immamag' | 'vidmag' | 'avatar' | 'header'
 ): Promise<UploadResult> {
   const isVideo = mediaCategory === 'video' || mimeType.startsWith('video/');
-  const subfolder = isVideo ? 'vidmag' : 'immamag';
+  let subfolder: 'immamag' | 'vidmag' | 'avatar' = 'immamag';
+  if (targetSubfolder === 'avatar' || targetSubfolder === 'header' || mediaCategory === 'avatar' || mediaCategory === 'header') {
+    subfolder = 'avatar';
+  } else if (targetSubfolder === 'vidmag' || isVideo) {
+    subfolder = 'vidmag';
+  } else {
+    subfolder = 'immamag';
+  }
   
   // Determina l'estensione del file in modo sicuro (senza usare il nome originale per il file finale)
   let ext = path.extname(originalFilename || '').toLowerCase().replace(/[^a-z0-9]/g, '');

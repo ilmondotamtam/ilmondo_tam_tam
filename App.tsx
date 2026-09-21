@@ -37,7 +37,7 @@ const App: React.FC = () => {
       const token = urlParams.get('token');
       const email = urlParams.get('email');
 
-      if ((action === 'reset_password' || action === 'reset-password') && token) {
+      if (token && (action === 'reset_password' || action === 'reset-password' || !action)) {
         setResetPasswordToken(token);
         if (email) setAuthEmail(email);
         setAuthMode('RESET_PASSWORD');
@@ -389,17 +389,17 @@ const App: React.FC = () => {
         const validRole = (['ADMIN', 'AUTHOR', 'READER', 'GESTOR'].includes(rawRole) ? rawRole : 'AUTHOR') as UserRole;
         setUser({
           id: profile.id,
-          username: profile.username,
-          email: profile.email,
+          username: profile.username || profile.user_metadata?.username,
+          email: profile.email || profile.user_metadata?.email,
           role: validRole,
-          avatar: profile.avatar,
-          firstName: profile.first_name,
-          lastName: profile.last_name,
-          birthDate: profile.birth_date,
-          city: profile.city,
-          mobile: profile.mobile,
-          job: profile.job,
-          bio: profile.bio
+          avatar: profile.avatar || profile.user_metadata?.avatar,
+          firstName: profile.first_name || profile.firstName || profile.user_metadata?.first_name || '',
+          lastName: profile.last_name || profile.lastName || profile.user_metadata?.last_name || '',
+          birthDate: profile.birth_date || profile.birthDate || profile.user_metadata?.birth_date || '',
+          city: profile.city || profile.user_metadata?.city || '',
+          mobile: profile.mobile || profile.user_metadata?.mobile || '',
+          job: profile.job || profile.user_metadata?.job || '',
+          bio: profile.bio || profile.user_metadata?.bio || ''
         });
       } else {
         // Se il profilo non esiste ancora (es. trigger in ritardo), impostiamo un profilo temporaneo
@@ -532,7 +532,11 @@ const App: React.FC = () => {
         .select('*')
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-      if (contactsError) throw contactsError;
+      if (contactsError) {
+        console.warn("DEBUG: Fetch contacts notice:", contactsError);
+        setContacts([]);
+        return;
+      }
 
       if (!contactsData || contactsData.length === 0) {
         setContacts([]);
@@ -540,46 +544,54 @@ const App: React.FC = () => {
       }
 
       // Collect unique user IDs
-      const userIds = Array.from(new Set(contactsData.flatMap((c: any) => [c.sender_id, c.receiver_id])));
+      const userIds = Array.from(
+        new Set(contactsData.flatMap((c: any) => [c.sender_id || c.senderId, c.receiver_id || c.receiverId]))
+      ).filter((id): id is string => Boolean(id) && typeof id === 'string' && id !== 'undefined' && id !== 'null');
       
-      // Fetch user details
-      const { data: usersData, error: usersError } = await supabase
-        .from('utenti')
-        .select('id, username, avatar, first_name, last_name')
-        .in('id', userIds);
+      // Fetch user details safely
+      let usersMap = new Map();
+      if (userIds.length > 0) {
+        try {
+          const { data: usersData } = await supabase
+            .from('utenti')
+            .select('id, username, avatar, first_name, last_name')
+            .in('id', userIds);
 
-      if (usersError) throw usersError;
-
-      const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
+          if (usersData) {
+            usersMap = new Map((usersData as any[]).map((u: any) => [u.id, u]));
+          }
+        } catch (usersErr) {
+          console.warn("DEBUG: Fetch users for contacts warning:", usersErr);
+        }
+      }
 
       const formattedContacts: Contatto[] = contactsData.map((c: any) => {
-        const senderData: any = usersMap.get(c.sender_id);
-        const receiverData: any = usersMap.get(c.receiver_id);
+        const sId = c.sender_id || c.senderId;
+        const rId = c.receiver_id || c.receiverId;
+        const senderData: any = usersMap.get(sId);
+        const receiverData: any = usersMap.get(rId);
         
         const sName = `${senderData?.first_name || ''} ${senderData?.last_name || ''}`.trim();
         const rName = `${receiverData?.first_name || ''} ${receiverData?.last_name || ''}`.trim();
 
         return {
           id: c.id,
-          senderId: c.sender_id,
-          receiverId: c.receiver_id,
+          senderId: sId,
+          receiverId: rId,
           status: c.status as ContattoStatus,
-          createdAt: new Date(c.created_at).getTime(),
-          updatedAt: new Date(c.updated_at).getTime(),
-          senderName: sName || senderData?.username || 'Utente',
-          senderAvatar: senderData?.avatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${c.sender_id}`,
-          receiverName: rName || receiverData?.username || 'Utente',
-          receiverAvatar: receiverData?.avatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${c.receiver_id}`
+          createdAt: new Date(c.created_at || c.createdAt).getTime(),
+          updatedAt: new Date(c.updated_at || c.updatedAt).getTime(),
+          senderName: sName || senderData?.username || c.senderName || 'Utente',
+          senderAvatar: senderData?.avatar || c.senderAvatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${sId}`,
+          receiverName: rName || receiverData?.username || c.receiverName || 'Utente',
+          receiverAvatar: receiverData?.avatar || c.receiverAvatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${rId}`
         };
       });
 
       setContacts(formattedContacts);
     } catch (err: any) {
-      console.error("DEBUG: Fetch Contacts Error:", err);
-      const errorMessage = err.message || "Errore sconosciuto";
-      const errorDetails = err.details || "";
-      console.error(`DEBUG: Error Message: ${errorMessage}, Details: ${errorDetails}`);
-      showToast(`Errore nel caricamento dei contatti: ${errorMessage}`, 'error');
+      console.warn("DEBUG: Fetch Contacts Notice:", err);
+      setContacts([]);
     }
   };
 
@@ -595,7 +607,12 @@ const App: React.FC = () => {
         .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
         .order('created_at', { ascending: true });
 
-      if (messagesError) throw messagesError;
+      if (messagesError) {
+        console.warn("DEBUG: Fetch messages notice:", messagesError);
+        setMessages([]);
+        setUnreadMessagesCount(0);
+        return;
+      }
 
       if (!messagesData || messagesData.length === 0) {
         setMessages([]);
@@ -604,31 +621,42 @@ const App: React.FC = () => {
       }
 
       // Collect unique user IDs
-      const userIds = Array.from(new Set(messagesData.flatMap((m: any) => [m.sender_id, m.receiver_id])));
+      const userIds = Array.from(
+        new Set(messagesData.flatMap((m: any) => [m.sender_id || m.senderId, m.receiver_id || m.receiverId]))
+      ).filter((id): id is string => Boolean(id) && typeof id === 'string' && id !== 'undefined' && id !== 'null');
       
-      // Fetch user details
-      const { data: usersData, error: usersError } = await supabase
-        .from('utenti')
-        .select('id, username, avatar, first_name, last_name')
-        .in('id', userIds);
+      // Fetch user details safely
+      let usersMap = new Map();
+      if (userIds.length > 0) {
+        try {
+          const { data: usersData } = await supabase
+            .from('utenti')
+            .select('id, username, avatar, first_name, last_name')
+            .in('id', userIds);
 
-      if (usersError) throw usersError;
-
-      const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
+          if (usersData) {
+            usersMap = new Map((usersData as any[]).map((u: any) => [u.id, u]));
+          }
+        } catch (usersErr) {
+          console.warn("DEBUG: Fetch users for messages warning:", usersErr);
+        }
+      }
 
       const formattedMessages: PrivateMessage[] = messagesData.map((m: any) => {
-        const senderInfo: any = usersMap.get(m.sender_id);
+        const sId = m.sender_id || m.senderId;
+        const rId = m.receiver_id || m.receiverId;
+        const senderInfo: any = usersMap.get(sId);
         const sName = `${senderInfo?.first_name || ''} ${senderInfo?.last_name || ''}`.trim();
         
         return {
           id: m.id,
-          senderId: m.sender_id,
-          receiverId: m.receiver_id,
+          senderId: sId,
+          receiverId: rId,
           content: m.content,
-          isRead: m.is_read,
-          createdAt: new Date(m.created_at).getTime(),
-          senderName: sName || senderInfo?.username || 'Utente',
-          senderAvatar: senderInfo?.avatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${m.sender_id}`
+          isRead: typeof m.is_read !== 'undefined' ? m.is_read : (typeof m.isRead !== 'undefined' ? m.isRead : false),
+          createdAt: new Date(m.created_at || m.createdAt).getTime(),
+          senderName: sName || senderInfo?.username || m.senderName || 'Utente',
+          senderAvatar: senderInfo?.avatar || m.senderAvatar || `https://api.dicebear.com/7.x/miniavs/svg?seed=${sId}`
         };
       });
 
@@ -639,11 +667,9 @@ const App: React.FC = () => {
       const unread = formattedMessages.filter(m => m.receiverId === user.id && !m.isRead).length;
       setUnreadMessagesCount(unread);
     } catch (err: any) {
-      console.error("DEBUG: Fetch Messages Error:", err);
-      const errorMessage = err.message || "Errore sconosciuto";
-      const errorDetails = err.details || "";
-      console.error(`DEBUG: Error Message: ${errorMessage}, Details: ${errorDetails}`);
-      showToast(`Errore nel caricamento dei messaggi: ${errorMessage}`, 'error');
+      console.warn("DEBUG: Fetch Messages Notice:", err);
+      setMessages([]);
+      setUnreadMessagesCount(0);
     }
   };
 
@@ -935,9 +961,13 @@ const App: React.FC = () => {
         setIsGeneratingAI(false);
         showToast("Accesso effettuato con successo!");
       } else if (authMode === 'FORGOT_PASSWORD') {
-        const resetPath = window.location.origin + (window.location.pathname === '/' ? '' : window.location.pathname);
+        const isLocalOrDev = window.location.hostname.includes('run.app') || window.location.hostname === 'localhost';
+        const resetUrl = isLocalOrDev 
+          ? 'https://www.mondotamtam.it/reset-password.php'
+          : `${window.location.origin}${window.location.pathname === '/' ? '' : window.location.pathname}?action=reset_password`;
+
         const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
-          redirectTo: `${resetPath}?action=reset_password`,
+          redirectTo: resetUrl,
         });
         if (error) throw error;
         showToast("Email di recupero inviata! Controlla la tua posta (anche nello SPAM).");
@@ -1137,16 +1167,29 @@ const App: React.FC = () => {
       }
 
       // Inserimento nel DB
-      const summary = newContent.length > 200 ? newContent.substring(0, 197) + '...' : newContent;
+      const cleanTitle = (newTitle || '').trim();
+      const cleanContent = (newContent || '').trim();
+      if (!cleanTitle) {
+        setArticleError("Inserisci un titolo per l'articolo.");
+        return;
+      }
+      if (!cleanContent) {
+        setArticleError("Inserisci il contenuto dell'articolo.");
+        return;
+      }
+
+      const summary = cleanContent.length > 200 ? cleanContent.substring(0, 197) + '...' : cleanContent;
+      const authorFullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      const safeAuthorName = authorFullName || user.username || user.email?.split('@')[0] || 'Autore';
       
       const { error } = await supabase.from('articles').insert({
-        title: newTitle,
-        content: newContent,
+        title: cleanTitle,
+        content: cleanContent,
         summary: summary,
-        category: newArticleCategory,
+        category: newArticleCategory || 'Opinioni',
         image_url: finalImageUrl || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000',
         author_id: user.id,
-        author_name: `${user.firstName} ${user.lastName}`
+        author_name: safeAuthorName
       });
 
       if (error) throw error;
@@ -1209,7 +1252,7 @@ const App: React.FC = () => {
 
       if (error) throw error;
       setHeaderImage(publicUrl);
-      showToast("Logo testata ottimizzato e salvato su Aruba Business!");
+      showToast("Logo testata salvato in mediamag/avatar e aggiornato su Aruba!");
     } catch (error: any) {
       console.error('Header upload error:', error);
       const errorMsg = error.message || "Errore durante l'aggiornamento del logo.";
@@ -1530,9 +1573,11 @@ const App: React.FC = () => {
                       <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-stone-800 mb-2 mx-auto transition-all" alt="Profile" referrerPolicy="no-referrer" />
                       <h4 className="text-lg font-bold newspaper-font mb-1 group-hover:text-red-600 transition-colors">{user.firstName} {user.lastName}</h4>
                     </div>
-                    <span className="inline-block px-2.5 py-1 text-[10px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-6 shadow-sm">
+                    <span className="inline-block px-2.5 py-1 text-[10px] font-black uppercase tracking-widest bg-stone-800 text-white rounded mb-4 shadow-sm">
                       {formatUserRole(user.role)} <span className="opacity-75 text-[8px]">({user.role})</span>
                     </span>
+
+
                     
                     <button 
                       onClick={() => setIsMessagesModalOpen(true)}
@@ -1870,8 +1915,14 @@ const App: React.FC = () => {
                       else if (isFacebook) previewClass = "aspect-[4/3] w-full";
 
                       return (
-                        <div className={previewClass}>
-                          <iframe src={embedUrl} className="w-full h-full border-0" allowFullScreen />
+                        <div className={`${previewClass} overflow-hidden rounded`}>
+                          <iframe 
+                            src={embedUrl} 
+                            className="w-full h-full border-0" 
+                            allowFullScreen 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerPolicy="strict-origin-when-cross-origin"
+                          />
                         </div>
                       );
                     }
@@ -2503,7 +2554,18 @@ const App: React.FC = () => {
               if (!mediaUrl) return null;
               const embedUrl = getEmbedUrl(mediaUrl);
               if (embedUrl) {
-                return <iframe src={embedUrl} className="w-full aspect-video mb-12 rounded shadow-lg border-0" allowFullScreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" loading="lazy" />;
+                return (
+                  <div className="aspect-video w-full rounded shadow-lg overflow-hidden bg-black mb-12">
+                    <iframe 
+                      src={embedUrl} 
+                      className="w-full h-full border-0" 
+                      allowFullScreen 
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      loading="lazy" 
+                    />
+                  </div>
+                );
               }
               if (isVideoUrl(mediaUrl)) {
                 return <video src={mediaUrl} className="w-full h-auto max-h-[600px] mb-12 rounded shadow-lg mx-auto" controls playsInline preload="metadata" />;

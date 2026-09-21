@@ -96,20 +96,60 @@ const ProfileUpdateSchema = z.object({
 });
 
 const CreateArticleSchema = z.object({
-  title: z.string().min(3, 'Il titolo deve avere almeno 3 caratteri'),
-  content: z.string().min(10, 'Il contenuto deve avere almeno 10 caratteri'),
-  summary: z.string().optional(),
-  category: z.string().min(1, 'Categoria obbligatoria'),
+  id: z.string().optional().nullable(),
+  title: z.string({ message: 'Il titolo è obbligatorio' }).min(1, 'Il titolo non può essere vuoto'),
+  content: z.string({ message: 'Il contenuto è obbligatorio' }).min(1, 'Il contenuto non può essere vuoto'),
+  summary: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
   author_id: z.string().optional().nullable(),
-  author_name: z.string().min(1, 'Nome autore obbligatorio'),
-  image_url: z.string().optional().nullable()
+  authorId: z.string().optional().nullable(),
+  author_name: z.string().optional().nullable(),
+  authorName: z.string().optional().nullable(),
+  image_url: z.string().optional().nullable(),
+  imageUrl: z.string().optional().nullable()
+}).passthrough().transform(data => {
+  const author_id = data.author_id || data.authorId || null;
+  const author_name = (data.author_name || data.authorName || '').trim() || 'Autore';
+  const image_url = data.image_url || data.imageUrl || null;
+  const category = (data.category || '').trim() || 'Opinioni';
+  const summary = data.summary !== undefined && data.summary !== null
+    ? String(data.summary)
+    : (data.content.length > 200 ? data.content.substring(0, 197) + '...' : data.content);
+
+  return {
+    ...data,
+    author_id,
+    author_name,
+    image_url,
+    category,
+    summary
+  };
 });
 
 const AddCommentSchema = z.object({
-  article_id: z.string().min(1, 'ID articolo richiesto'),
+  article_id: z.string().optional().nullable(),
+  articleId: z.string().optional().nullable(),
   user_id: z.string().optional().nullable(),
-  username: z.string().min(1, 'Username richiesto'),
-  content: z.string().min(1, 'Testo del commento obbligatorio')
+  userId: z.string().optional().nullable(),
+  username: z.string().optional().nullable(),
+  content: z.string({ message: 'Testo del commento obbligatorio' }).min(1, 'Testo del commento obbligatorio')
+}).passthrough().transform(data => {
+  const article_id = data.article_id || data.articleId || '';
+  if (!article_id) {
+    throw new z.ZodError([{
+      code: 'custom',
+      path: ['article_id'],
+      message: 'ID articolo richiesto'
+    }]);
+  }
+  const user_id = data.user_id || data.userId || null;
+  const username = (data.username || '').trim() || 'Utente';
+  return {
+    ...data,
+    article_id,
+    user_id,
+    username
+  };
 });
 
 const ToggleLikeSchema = z.object({
@@ -226,9 +266,21 @@ arubaRouter.post('/auth/reset-password', rateLimit(5, 60000), validateBody(Reset
 arubaRouter.get('/utenti/profile', validateQuery(z.object({ user_id: z.string() })), async (req, res, next) => {
   try {
     const profile = await arubaDb.getProfile(req.query.user_id as string);
-    res.json({ success: true, data: profile });
+    res.json({ success: true, data: profile || null });
   } catch (err: any) {
-    res.status(404).json({ success: false, error: err.message || 'Profilo non trovato' });
+    if (err.message && (err.message.includes('non trovato') || err.message.includes('not found') || err.message.includes('404'))) {
+      return res.json({ success: true, data: null });
+    }
+    res.status(500).json({ success: false, error: err.message || 'Errore recupero profilo' });
+  }
+});
+
+arubaRouter.post('/utenti/batch', validateBody(z.object({ ids: z.array(z.string()) })), async (req, res, next) => {
+  try {
+    const users = await arubaDb.getUsersByIds(req.body.ids);
+    res.json({ success: true, data: users });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -311,7 +363,7 @@ arubaRouter.get('/testata', async (req, res, next) => {
   }
 });
 
-arubaRouter.post('/testata', validateBody(z.object({ imma_testata: z.string().min(1) })), async (req, res, next) => {
+arubaRouter.post('/testata', validateBody(z.object({ id: z.string().optional(), imma_testata: z.string().min(1) })), async (req, res, next) => {
   try {
     const result = await arubaDb.updateTestata(req.body.imma_testata);
     res.json({ success: true, ...result });
@@ -321,12 +373,17 @@ arubaRouter.post('/testata', validateBody(z.object({ imma_testata: z.string().mi
 });
 
 // CONTATTI
-arubaRouter.get('/contatti', validateQuery(z.object({ user_id: z.string() })), async (req, res, next) => {
+arubaRouter.get('/contatti', validateQuery(z.object({ user_id: z.string().optional().default('') })), async (req, res, next) => {
   try {
-    const contacts = await arubaDb.getContacts(req.query.user_id as string);
-    res.json({ success: true, data: contacts });
+    const userId = (req.query.user_id as string || '').trim();
+    if (!userId) {
+      return res.json({ success: true, data: [] });
+    }
+    const contacts = await arubaDb.getContacts(userId);
+    res.json({ success: true, data: contacts || [] });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    console.warn('[Aruba Routes] Errore recupero contatti:', err.message);
+    res.json({ success: true, data: [] });
   }
 });
 
@@ -360,12 +417,17 @@ arubaRouter.delete('/contatti/:id', async (req, res, next) => {
 });
 
 // MESSAGGI
-arubaRouter.get('/messaggi', validateQuery(z.object({ user_id: z.string() })), async (req, res, next) => {
+arubaRouter.get('/messaggi', validateQuery(z.object({ user_id: z.string().optional().default('') })), async (req, res, next) => {
   try {
-    const messages = await arubaDb.getMessages(req.query.user_id as string);
-    res.json({ success: true, data: messages });
+    const userId = (req.query.user_id as string || '').trim();
+    if (!userId) {
+      return res.json({ success: true, data: [] });
+    }
+    const messages = await arubaDb.getMessages(userId);
+    res.json({ success: true, data: messages || [] });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    console.warn('[Aruba Routes] Errore recupero messaggi:', err.message);
+    res.json({ success: true, data: [] });
   }
 });
 

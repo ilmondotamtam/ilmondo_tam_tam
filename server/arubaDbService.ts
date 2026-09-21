@@ -108,7 +108,7 @@ async function callArubaBridge(action: string, method: 'GET' | 'POST' = 'POST', 
       const options: RequestInit = {
         method,
         headers,
-        signal: AbortSignal.timeout(10000) // Timeout 10s per resilienza di rete
+        signal: AbortSignal.timeout(6000) // Timeout 6s per resilienza di rete
       };
 
       if (method === 'POST') {
@@ -116,10 +116,16 @@ async function callArubaBridge(action: string, method: 'GET' | 'POST' = 'POST', 
       }
 
       const response = await fetch(url.toString(), options);
-      const json = await response.json();
+      const rawText = await response.text();
+      let json: any = null;
+      try {
+        json = JSON.parse(rawText);
+      } catch {
+        throw new Error(`Risposta non-JSON da Bridge Aruba (HTTP ${response.status})`);
+      }
 
       if (!response.ok || json.success === false) {
-        throw new Error(json.error || `Errore Bridge Aruba HTTP ${response.status}`);
+        throw new Error(json?.error || `Errore Bridge Aruba HTTP ${response.status}`);
       }
 
       return json.data;
@@ -247,9 +253,33 @@ async function executeFallback(action: string, payload: any): Promise<any> {
     case 'get_profile': {
       const { user_id } = payload;
       const user = fallbackStore.utenti.get(user_id);
-      if (!user) throw new Error('Utente non trovato.');
+      if (!user) return null;
       const { passwordHash: _, ...publicProfile } = user;
-      return publicProfile;
+      return {
+        ...publicProfile,
+        first_name: publicProfile.firstName || publicProfile.first_name || '',
+        last_name: publicProfile.lastName || publicProfile.last_name || '',
+        birth_date: publicProfile.birthDate || publicProfile.birth_date || ''
+      };
+    }
+
+    case 'get_users_by_ids': {
+      const { ids } = payload;
+      const validIds: string[] = Array.isArray(ids) ? ids : [];
+      const results: any[] = [];
+      for (const id of validIds) {
+        const u = fallbackStore.utenti.get(id);
+        if (u) {
+          const { passwordHash: _, ...publicProfile } = u;
+          results.push({
+            ...publicProfile,
+            first_name: publicProfile.firstName || publicProfile.first_name || '',
+            last_name: publicProfile.lastName || publicProfile.last_name || '',
+            birth_date: publicProfile.birthDate || publicProfile.birth_date || ''
+          });
+        }
+      }
+      return results;
     }
 
     case 'update_profile': {
@@ -461,7 +491,40 @@ export const arubaDb = {
   authUpdatePassword: (data: any) => callArubaBridge('auth_update_password', 'POST', data),
   authForgotPassword: (data: any) => callArubaBridge('auth_forgot_password', 'POST', data),
   authResetPassword: (data: any) => callArubaBridge('auth_reset_password', 'POST', data),
-  getProfile: (userId: string) => callArubaBridge('get_profile', 'POST', { user_id: userId }),
+  getProfile: async (userId: string) => {
+    if (!userId || userId === 'undefined' || userId === 'null') return null;
+    try {
+      const user = await callArubaBridge('get_profile', 'POST', { user_id: userId });
+      if (!user) return null;
+      return {
+        ...user,
+        first_name: user.firstName || user.first_name || '',
+        last_name: user.lastName || user.last_name || '',
+        birth_date: user.birthDate || user.birth_date || ''
+      };
+    } catch (err: any) {
+      if (err.message && (err.message.includes('non trovato') || err.message.includes('not found') || err.message.includes('404'))) {
+        return null;
+      }
+      throw err;
+    }
+  },
+  getUsersByIds: async (ids: string[]) => {
+    const validIds = Array.from(new Set(ids.filter(id => Boolean(id) && typeof id === 'string' && id !== 'undefined' && id !== 'null')));
+    if (validIds.length === 0) return [];
+
+    const fetchPromises = validIds.map(async (userId) => {
+      try {
+        const user = await arubaDb.getProfile(userId);
+        return user;
+      } catch {
+        return null;
+      }
+    });
+
+    const results = await Promise.all(fetchPromises);
+    return results.filter(Boolean);
+  },
   updateProfile: (data: any) => callArubaBridge('update_profile', 'POST', data),
   searchUsers: (query: string, excludeId?: string) => callArubaBridge('search_users', 'POST', { q: query, exclude_id: excludeId }),
   getArticles: async () => {
@@ -483,11 +546,21 @@ export const arubaDb = {
   toggleLike: (articleId: string, userId: string) => callArubaBridge('toggle_like', 'POST', { article_id: articleId, user_id: userId }),
   getTestata: () => callArubaBridge('get_testata', 'GET'),
   updateTestata: (imageUrl: string) => callArubaBridge('update_testata', 'POST', { imma_testata: imageUrl }),
-  getContacts: (userId: string) => callArubaBridge('get_contacts', 'POST', { user_id: userId }),
+  getContacts: (userId: string) => {
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      return Promise.resolve([]);
+    }
+    return callArubaBridge('get_contacts', 'POST', { user_id: userId.trim() });
+  },
   sendContactRequest: (senderId: string, receiverId: string) => callArubaBridge('send_contact_request', 'POST', { sender_id: senderId, receiver_id: receiverId }),
   updateContactStatus: (id: string, status: string) => callArubaBridge('update_contact_status', 'POST', { id, status }),
   deleteContact: (id: string) => callArubaBridge('delete_contact', 'POST', { id }),
-  getMessages: (userId: string) => callArubaBridge('get_messages', 'POST', { user_id: userId }),
+  getMessages: (userId: string) => {
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      return Promise.resolve([]);
+    }
+    return callArubaBridge('get_messages', 'POST', { user_id: userId.trim() });
+  },
   sendMessage: (senderId: string, receiverId: string, content: string) => callArubaBridge('send_message', 'POST', { sender_id: senderId, receiver_id: receiverId, content }),
   markMessagesRead: (receiverId: string, senderId: string) => callArubaBridge('mark_messages_read', 'POST', { receiver_id: receiverId, sender_id: senderId })
 };
