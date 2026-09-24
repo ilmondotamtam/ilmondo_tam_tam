@@ -221,12 +221,21 @@ export const arubaAuth = {
     return { data: { user: session.user }, error: null };
   },
 
-  async resetPasswordForEmail(email: string, options?: { redirectTo?: string }) {
+  async resetPasswordForEmail(emailInput: string | { email?: string; redirectTo?: string }, options?: { redirectTo?: string }) {
     try {
+      const email = typeof emailInput === 'object' && emailInput !== null
+        ? (emailInput.email || '')
+        : String(emailInput || '');
+      const cleanEmail = email.trim().toLowerCase();
+      const redirectTo = options?.redirectTo || (typeof emailInput === 'object' ? emailInput.redirectTo : undefined);
+
       const json = await apiFetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, redirectTo: options?.redirectTo })
+        body: JSON.stringify({
+          email: cleanEmail,
+          ...(redirectTo ? { redirectTo } : {})
+        })
       });
       return { data: json, error: null };
     } catch (err: any) {
@@ -240,7 +249,7 @@ export const arubaAuth = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: params.token,
+          token: (params.token || '').trim(),
           new_password: params.new_password
         })
       });

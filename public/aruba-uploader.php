@@ -52,7 +52,11 @@ if ($subfolderParam === 'avatar' || $subfolderParam === 'header' || $mediaCatego
 } else {
     $subfolder = 'immamag';
 }
-$baseDir = __DIR__ . '/mediamag/' . $subfolder;
+$yearStr = date('Y');
+$monthStr = date('m');
+$dayStr = date('d');
+$dateFolder = $monthStr . '_' . $dayStr;
+$baseDir = __DIR__ . '/mediamag/' . $subfolder . '/' . $yearStr . '/' . $dateFolder;
 
 if (!is_dir($baseDir)) {
     mkdir($baseDir, 0755, true);
@@ -99,17 +103,17 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
 
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
     $host = $_SERVER['HTTP_HOST'];
-    $publicUrl = $protocol . $host . '/mediamag/' . $subfolder . '/' . $finalFilename;
+    $publicUrl = $protocol . $host . '/mediamag/' . $subfolder . '/' . $yearStr . '/' . $dateFolder . '/' . $finalFilename;
 
     echo json_encode([
         'success' => true,
         'url' => $publicUrl,
-        'path' => 'mediamag/' . $subfolder . '/' . $finalFilename,
+        'path' => 'mediamag/' . $subfolder . '/' . $yearStr . '/' . $dateFolder . '/' . $finalFilename,
         'filename' => $finalFilename,
         'size' => filesize($targetPath)
     ]);
 } else {
     http_response_code(500);
-    echo json_encode(['error' => 'Impossibile salvare il file nella cartella mediamag/' . $subfolder]);
+    echo json_encode(['error' => 'Impossibile salvare il file nella cartella mediamag/' . $subfolder . '/' . $yearStr . '/' . $dateFolder]);
 }
 ?>

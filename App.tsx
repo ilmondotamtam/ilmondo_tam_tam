@@ -816,6 +816,16 @@ const App: React.FC = () => {
 
     const isLiked = article.likedBy?.includes(user.id);
 
+    // Aggiornamento optimistico immediato (singolo click reattivo)
+    const newLikedBy = isLiked
+      ? (article.likedBy || []).filter(id => id !== user.id)
+      : [...(article.likedBy || []), user.id];
+    const newLikesCount = isLiked
+      ? Math.max(0, (article.likes || 0) - 1)
+      : (article.likes || 0) + 1;
+
+    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, likes: newLikesCount, likedBy: newLikedBy } : a));
+
     try {
       if (isLiked) {
         // Rimuovi mi piace
@@ -826,9 +836,6 @@ const App: React.FC = () => {
           .eq('user_id', user.id);
         
         if (error) throw error;
-
-        // Decrementa il contatore nell'articolo
-        await supabase.rpc('decrement_likes', { row_id: articleId });
       } else {
         // Aggiungi mi piace
         const { error } = await supabase
@@ -836,15 +843,11 @@ const App: React.FC = () => {
           .insert({ article_id: articleId, user_id: user.id });
         
         if (error) throw error;
-
-        // Incrementa il contatore nell'articolo
-        await supabase.rpc('increment_likes', { row_id: articleId });
       }
-
-      // Ricarica i dati per aggiornare la UI
-      await fetchData();
     } catch (err) {
       console.error("Like Error:", err);
+      // Ripristina in caso di errore
+      await fetchData();
     }
   };
 
@@ -924,10 +927,12 @@ const App: React.FC = () => {
     setIsGeneratingAI(true);
 
     try {
+      const cleanEmail = authEmail.trim();
+
       if (authMode === 'REGISTER') {
         const username = `${firstName}_${lastName}`.toLowerCase().replace(/\s/g, '');
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: authEmail,
+          email: cleanEmail,
           password: authPassword,
           options: {
             data: {
@@ -948,7 +953,7 @@ const App: React.FC = () => {
         showToast("Registrazione completata con successo nel database MySQL!");
       } else if (authMode === 'LOGIN') {
         const { error } = await supabase.auth.signInWithPassword({
-          email: authEmail,
+          email: cleanEmail,
           password: authPassword,
         });
 
@@ -961,12 +966,17 @@ const App: React.FC = () => {
         setIsGeneratingAI(false);
         showToast("Accesso effettuato con successo!");
       } else if (authMode === 'FORGOT_PASSWORD') {
+        if (!cleanEmail) {
+          setAuthError('Inserisci un indirizzo email valido.');
+          return;
+        }
+
         const isLocalOrDev = window.location.hostname.includes('run.app') || window.location.hostname === 'localhost';
         const resetUrl = isLocalOrDev 
           ? 'https://www.mondotamtam.it/reset-password.php'
           : `${window.location.origin}${window.location.pathname === '/' ? '' : window.location.pathname}?action=reset_password`;
 
-        const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
           redirectTo: resetUrl,
         });
         if (error) throw error;
@@ -1197,7 +1207,7 @@ const App: React.FC = () => {
       // Reset e chiusura
       closeNewArticleModal();
       await fetchData();
-      showToast("Articolo pubblicato con successo!");
+      showToast("Opinione pubblicata con successo!");
     } catch (err: any) {
       console.error("Article Creation Error:", err);
       setArticleError(err.message || "Errore durante il salvataggio dell'articolo.");
@@ -1697,7 +1707,15 @@ const App: React.FC = () => {
                       <p className="text-xs text-stone-500 font-serif text-center leading-relaxed">
                         {t.auth.forgotPasswordInstructions}
                       </p>
-                      <input required type="email" placeholder={t.auth.email} className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+                      <input 
+                        required 
+                        type="email" 
+                        placeholder={t.auth.email} 
+                        className="w-full p-3 border-2 border-stone-100 rounded-lg text-sm" 
+                        value={authEmail} 
+                        onChange={e => setAuthEmail(e.target.value)} 
+                        onBlur={() => setAuthEmail(prev => prev.trim())}
+                      />
                       <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-[11px] text-amber-800 leading-tight">
                         💡 <strong>Suggerimento:</strong> Controlla anche la cartella <strong>SPAM</strong> o Posta Indesiderata nel caso in cui l'email non compaia in Posta in Arrivo entro pochi minuti.
                       </div>

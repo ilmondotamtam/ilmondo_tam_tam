@@ -622,8 +622,9 @@ try {
 
         // 7. CONFERMA E CAMBIO PASSWORD DA RESET
         case 'auth_reset_password':
-            $token = $body['token'] ?? '';
+            $token = trim($body['token'] ?? '');
             $newPassword = $body['new_password'] ?? '';
+            $userEmail = trim(strtolower($body['email'] ?? ''));
 
             if (empty($token) || empty($newPassword) || strlen($newPassword) < 6) {
                 sendResponse(null, 400, 'Parametri non validi o password troppo corta.');
@@ -633,11 +634,23 @@ try {
             $stmt = $pdo->prepare("
                 SELECT `id`, `email` 
                 FROM `password_resets` 
-                WHERE `token_hash` = ? AND `used` = 0 AND `expires_at` > NOW()
+                WHERE (`token_hash` = ? OR `token_hash` = ?) AND `used` = 0 AND `expires_at` > NOW()
                 LIMIT 1
             ");
-            $stmt->execute([$tokenHash]);
+            $stmt->execute([$tokenHash, $token]);
             $resetEntry = $stmt->fetch();
+
+            if (!$resetEntry && !empty($userEmail)) {
+                // Controllo flessibile su reset valido associato all'email
+                $altStmt = $pdo->prepare("
+                    SELECT `id`, `email` 
+                    FROM `password_resets` 
+                    WHERE `email` = ? AND `token_hash` = ? AND `used` = 0 AND `expires_at` > NOW()
+                    LIMIT 1
+                ");
+                $altStmt->execute([$userEmail, $tokenHash]);
+                $resetEntry = $altStmt->fetch();
+            }
 
             if (!$resetEntry) {
                 sendResponse(null, 400, 'Token di recupero non valido o scaduto.');
@@ -646,8 +659,8 @@ try {
             $newHash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
 
             $pdo->beginTransaction();
-            $upUser = $pdo->prepare("UPDATE `utenti` SET `password_hash` = ? WHERE `email` = ?");
-            $upUser->execute([$newHash, $resetEntry['email']]);
+            $upUser = $pdo->prepare("UPDATE `utenti` SET `password_hash` = ?, `updated_at` = NOW() WHERE LOWER(TRIM(`email`)) = ?");
+            $upUser->execute([$newHash, strtolower(trim($resetEntry['email']))]);
 
             $markUsed = $pdo->prepare("UPDATE `password_resets` SET `used` = 1 WHERE `id` = ?");
             $markUsed->execute([$resetEntry['id']]);
@@ -890,7 +903,7 @@ try {
 
             sendResponse([
                 'id'      => $articleId,
-                'message' => 'Articolo pubblicato con successo su MySQL Aruba'
+                'message' => 'Opinione pubblicata con successo su MySQL Aruba'
             ], 201);
             break;
 

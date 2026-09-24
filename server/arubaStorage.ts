@@ -107,7 +107,15 @@ export async function saveMediaToAruba(
   const timestamp = Date.now();
   const randomSuffix = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 6);
   const finalFilename = `${timestamp}-${randomSuffix}.${ext}`;
-  const relativeMediaPath = `mediamag/${subfolder}/${finalFilename}`;
+
+  // Criterio di posizionamento: anno corrente e sottocartella mese_giorno (es. 2026/09_23)
+  const now = new Date();
+  const yearStr = now.getFullYear().toString();
+  const monthStr = String(now.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(now.getDate()).padStart(2, '0');
+  const dateFolder = `${monthStr}_${dayStr}`;
+
+  const relativeMediaPath = `mediamag/${subfolder}/${yearStr}/${dateFolder}/${finalFilename}`;
 
   // Parametri di configurazione SSH / SFTP & FTP per Aruba Business
   const sshHost = process.env.ARUBA_SSH_HOST || process.env.ARUBA_FTP_HOST;
@@ -150,12 +158,12 @@ export async function saveMediaToAruba(
 
         // Percorso cartella remota su server Aruba SSH
         const remoteDir = rootPath 
-          ? path.posix.join(rootPath, 'mediamag', subfolder) 
-          : path.posix.join('mediamag', subfolder);
+          ? path.posix.join(rootPath, 'mediamag', subfolder, yearStr, dateFolder) 
+          : path.posix.join('mediamag', subfolder, yearStr, dateFolder);
 
         const remoteFilePath = path.posix.join(remoteDir, finalFilename);
 
-        // Crea ricorsivamente la cartella mediamag/immamag o mediamag/vidmag se non esiste
+        // Crea ricorsivamente la cartella anno/mese_giorno se non esiste
         await sftp.mkdir(remoteDir, true);
 
         // Carica il buffer del file tramite canale SSH sicuro
@@ -205,8 +213,8 @@ export async function saveMediaToAruba(
         });
 
         const remoteDir = rootPath 
-          ? path.posix.join(rootPath, 'mediamag', subfolder) 
-          : path.posix.join('mediamag', subfolder);
+          ? path.posix.join(rootPath, 'mediamag', subfolder, yearStr, dateFolder) 
+          : path.posix.join('mediamag', subfolder, yearStr, dateFolder);
 
         await client.ensureDir(remoteDir);
 
@@ -237,7 +245,7 @@ export async function saveMediaToAruba(
   }
 
   // 3. STORAGE LOCALE & SERVING IMMEDIATO (Resilienza totale per ambiente dev, preview e fallback)
-  const localTargetDir = path.join(process.cwd(), 'public', 'mediamag', subfolder);
+  const localTargetDir = path.join(process.cwd(), 'public', 'mediamag', subfolder, yearStr, dateFolder);
   await fs.promises.mkdir(localTargetDir, { recursive: true });
 
   const localFilePath = path.join(localTargetDir, finalFilename);

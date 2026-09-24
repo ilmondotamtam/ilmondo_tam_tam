@@ -43,7 +43,7 @@ function validateQuery<T extends z.ZodTypeAny>(schema: T) {
 // -----------------------------------------------------------------------------
 
 const RegisterSchema = z.object({
-  email: z.string().email('Email non valida'),
+  email: z.string().trim().toLowerCase().email('Email non valida'),
   password: z.string().min(6, 'La password deve avere almeno 6 caratteri'),
   first_name: z.string().optional().default(''),
   last_name: z.string().optional().default(''),
@@ -73,12 +73,29 @@ const UpdatePasswordSchema = z.object({
 });
 
 const ForgotPasswordSchema = z.object({
-  email: z.string().email('Email non valida'),
-  redirectTo: z.string().optional()
+  email: z.string().optional(),
+  mail: z.string().optional(),
+  redirectTo: z.string().optional().nullable(),
+  redirect_to: z.string().optional().nullable()
+}).passthrough().transform((data, ctx) => {
+  const rawEmail = (data.email || data.mail || '').trim().toLowerCase();
+  const emailResult = z.string().email('Email non valida').safeParse(rawEmail);
+  if (!emailResult.success) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['email'],
+      message: rawEmail ? 'Email non valida' : 'Email obbligatoria'
+    });
+    return z.NEVER;
+  }
+  return {
+    email: rawEmail,
+    redirectTo: (data.redirectTo || data.redirect_to || '').trim() || undefined
+  };
 });
 
 const ResetPasswordSchema = z.object({
-  token: z.string().min(1, 'Token richiesto'),
+  token: z.string().trim().min(1, 'Token richiesto'),
   new_password: z.string().min(6, 'La nuova password deve contenere almeno 6 caratteri')
 });
 
