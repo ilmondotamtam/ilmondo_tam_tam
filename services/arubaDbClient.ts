@@ -322,10 +322,14 @@ class TableQueryBuilder {
   }
 
   or(conditions: string) {
-    // Es: "sender_id.eq.xxx,receiver_id.eq.xxx"
+    // Es: "sender_id.eq.xxx,receiver_id.eq.xxx" o "username.ilike.%query%,first_name.ilike.%query%,last_name.ilike.%query%"
     const match = conditions.match(/eq\.([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
       this.filters.push({ field: 'user_id', op: '=', value: match[1] });
+    }
+    const matchIlike = conditions.match(/ilike\.%([^%]+)%/);
+    if (matchIlike && matchIlike[1]) {
+      this.filters.push({ field: 'search_query', op: 'ilike', value: matchIlike[1] });
     }
     return this;
   }
@@ -506,7 +510,8 @@ class TableQueryBuilder {
         }
 
         // Cerca utenti
-        const json = await apiFetch(`/api/utenti/search?exclude_id=${encodeURIComponent(currentUserId || '')}`);
+        const searchQuery = this.filters.find(f => f.field === 'search_query')?.value || '';
+        const json = await apiFetch(`/api/utenti/search?q=${encodeURIComponent(searchQuery)}&exclude_id=${encodeURIComponent(currentUserId || '')}`);
         return { data: json.data || [], error: null };
       }
 
