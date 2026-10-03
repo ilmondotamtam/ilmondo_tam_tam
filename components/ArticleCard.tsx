@@ -29,10 +29,11 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onAu
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const shareUrl = `${window.location.origin}${window.location.pathname}?article=${article.id}`;
     const shareData = {
       title: article.title,
       text: article.summary,
-      url: window.location.href,
+      url: shareUrl,
     };
 
     if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
@@ -45,10 +46,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick, onAu
       }
     } else {
       try {
-        await navigator.clipboard.writeText(window.location.href);
-        // We don't have access to showToast here easily without props, 
-        // but we can use a basic fallback or just assume it worked if no error.
-        // For maximum compatibility with the iframe, we avoid alert.
+        await navigator.clipboard.writeText(shareUrl);
       } catch (err) {
         console.error('Clipboard failed:', err);
       }

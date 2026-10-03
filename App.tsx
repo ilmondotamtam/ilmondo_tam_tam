@@ -490,6 +490,15 @@ const App: React.FC = () => {
       
       sortArticles(formattedArticles);
 
+      const urlParams = new URLSearchParams(window.location.search);
+      const articleParam = urlParams.get('article');
+      if (articleParam && !selectedArticle) {
+        const found = formattedArticles.find(a => a.id === articleParam);
+        if (found) {
+          setSelectedArticle(found);
+        }
+      }
+
       if (testataRes && testataRes.data) {
         setHeaderImage(testataRes.data.imma_testata);
       }
