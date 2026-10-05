@@ -38,6 +38,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
+// Global Exception & Error Handler per garantire output JSON ed evitare HTML/500
+set_exception_handler(function($exception) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode([
+        'success'   => false,
+        'data'      => null,
+        'error'     => 'Bridge Exception: ' . $exception->getMessage(),
+        'file'      => basename($exception->getFile()),
+        'line'      => $exception->getLine(),
+        'timestamp' => date('c')
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit();
+});
+
+set_error_handler(function($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) {
+        return;
+    }
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
 // Caricamento configurazione
 $configFile = __DIR__ . '/config.php';
 $sampleFile = __DIR__ . '/config.sample.php';
