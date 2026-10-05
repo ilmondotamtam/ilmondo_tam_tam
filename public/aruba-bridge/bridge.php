@@ -814,6 +814,37 @@ try {
             $articles = $stmt->fetchAll();
 
             if (empty($articles)) {
+                // Inserisce automaticamente un articolo di benvenuto se la tabella è vuota
+                $defaultId = 'default-welcome-article';
+                $defaultTitle = 'Benvenuti su Il Mondo Tam Tam (MySQL Aruba)';
+                $defaultSummary = 'La piattaforma è correttamente connessa al database MySQL su Aruba Business.';
+                $defaultContent = 'Siamo online! Questo è il primo post di benvenuto inserito automaticamente nel database MySQL di Aruba Business per iniziare subito a condividere opinioni e notizie.';
+                $defaultAuthorName = 'Redazione Tam Tam';
+                $defaultCategory = 'Opinioni';
+                $defaultImage = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000';
+
+                try {
+                    $ins = $pdo->prepare("
+                        INSERT IGNORE INTO `articles` 
+                        (`id`, `title`, `summary`, `content`, `author_name`, `category`, `image_url`, `likes`, `created_at`)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())
+                    ");
+                    $ins->execute([$defaultId, $defaultTitle, $defaultSummary, $defaultContent, $defaultAuthorName, $defaultCategory, $defaultImage]);
+
+                    // Rileva nuovamente gli articoli
+                    $stmt = $pdo->query("
+                        SELECT a.`id`, a.`title`, a.`summary`, a.`content`, a.`author_id`, a.`author_name`,
+                               a.`category`, a.`image_url`, a.`likes`, a.`created_at`, a.`updated_at`
+                        FROM `articles` a
+                        ORDER BY a.`created_at` DESC
+                    ");
+                    $articles = $stmt->fetchAll();
+                } catch (Exception $e) {
+                    // Ignora errori di seeding e procede
+                }
+            }
+
+            if (empty($articles)) {
                 sendResponse([]);
             }
 
