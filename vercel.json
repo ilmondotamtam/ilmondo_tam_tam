@@ -1,7 +1,15 @@
 {
   "version": 2,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/server.ts" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "builds": [
+    { "src": "aruba-bridge/bridge.php", "use": "vercel-php" },
+    { "src": "reset-password.php", "use": "vercel-php" },
+    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
+  ],
+  "routes": [
+    { "src": "/api/bridge", "destination": "/aruba-bridge/bridge.php" },
+    { "src": "/api/bridge.php", "destination": "/aruba-bridge/bridge.php" },
+    { "src": "/aruba-bridge/bridge.php", "destination": "/aruba-bridge/bridge.php" },
+    { "src": "/reset-password.php", "destination": "/reset-password.php" },
+    { "src": "/(.*)", "destination": "/index.html" }
   ]
 }
