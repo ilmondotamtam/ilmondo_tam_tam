@@ -130,10 +130,7 @@ async function callArubaBridge(action: string, method: 'GET' | 'POST' = 'POST', 
 
       return json.data;
     } catch (err: any) {
-      if (!(global as any).__arubaBridgeOfflineLogged) {
-        console.info(`[Aruba Bridge] Endpoint remoto non ancora attivo o irraggiungibile (${err.message}). Utilizzo robusto del fallback locale in-memory.`);
-        (global as any).__arubaBridgeOfflineLogged = true;
-      }
+      console.warn(`[Aruba Bridge] Chiamata remota a ${action} fallita (${err.message}). Utilizzo fallback locale.`);
     }
   }
 
