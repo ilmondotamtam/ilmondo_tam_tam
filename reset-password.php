@@ -9,14 +9,21 @@
 
 define('TAM_TAM_BRIDGE_LOADED', true);
 
-// Caricamento configurazione DB da aruba-bridge/config.php
+// Caricamento configurazione DB da aruba-bridge/config.php o variabili d'ambiente (Vercel)
 $configFile = __DIR__ . '/aruba-bridge/config.php';
-if (!file_exists($configFile)) {
-    die("Errore di configurazione del sistema. File config.php non trovato.");
+if (file_exists($configFile)) {
+    $config = require $configFile;
+    $dbConfig = $config['db'];
+} else {
+    $dbConfig = [
+        'host'     => getenv('MYSQL_HOST') ?: '127.0.0.1',
+        'port'     => getenv('MYSQL_PORT') ?: 3306,
+        'database' => getenv('MYSQL_DATABASE') ?: '',
+        'username' => getenv('MYSQL_USER') ?: '',
+        'password' => getenv('MYSQL_PASSWORD') ?: '',
+        'charset'  => 'utf8mb4'
+    ];
 }
-$config = require $configFile;
-
-$dbConfig = $config['db'];
 try {
     $dsn = "mysql:host={$dbConfig['host']};port={$dbConfig['port']};dbname={$dbConfig['database']};charset={$dbConfig['charset']}";
     $pdo = new PDO($dsn, $dbConfig['username'], $dbConfig['password'], [
