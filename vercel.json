@@ -5,11 +5,11 @@
     { "src": "reset-password.php", "use": "vercel-php@0.9.0" },
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
   ],
-  "routes": [
-    { "src": "/api/bridge", "destination": "/aruba-bridge/bridge.php" },
-    { "src": "/api/bridge.php", "destination": "/aruba-bridge/bridge.php" },
-    { "src": "/aruba-bridge/bridge.php", "destination": "/aruba-bridge/bridge.php" },
-    { "src": "/reset-password.php", "destination": "/reset-password.php" },
-    { "src": "/(.*)", "destination": "/index.html" }
+  "rewrites": [
+    { "source": "/api/bridge", "destination": "/aruba-bridge/bridge.php" },
+    { "source": "/api/bridge.php", "destination": "/aruba-bridge/bridge.php" },
+    { "source": "/aruba-bridge/bridge.php", "destination": "/aruba-bridge/bridge.php" },
+    { "source": "/reset-password.php", "destination": "/reset-password.php" },
+    { "source": "/((?!api/|aruba-bridge/|reset-password\\.php|assets/).*)", "destination": "/index.html" }
   ]
 }
