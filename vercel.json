@@ -1,8 +1,8 @@
 {
   "version": 2,
   "builds": [
-    { "src": "aruba-bridge/bridge.php", "use": "vercel-php" },
-    { "src": "reset-password.php", "use": "vercel-php" },
+    { "src": "aruba-bridge/bridge.php", "use": "vercel-php@0.9.0" },
+    { "src": "reset-password.php", "use": "vercel-php@0.9.0" },
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
   ],
   "routes": [
