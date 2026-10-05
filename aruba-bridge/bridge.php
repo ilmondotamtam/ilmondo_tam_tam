@@ -17,6 +17,40 @@
 
 define('TAM_TAM_BRIDGE_LOADED', true);
 
+// Abilita gestori per evitare schermate bianche su Vercel
+set_exception_handler(function($e) {
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+    }
+    echo json_encode([
+        'success' => false,
+        'data' => null,
+        'error' => 'PHP Exception: ' . $e->getMessage(),
+        'file' => basename($e->getFile()),
+        'line' => $e->getLine()
+    ], JSON_UNESCAPED_UNICODE);
+    exit();
+});
+
+set_error_handler(function($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) {
+        return;
+    }
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+    }
+    echo json_encode([
+        'success' => false,
+        'data' => null,
+        'error' => "PHP Error: $message",
+        'file' => basename($file),
+        'line' => $line
+    ], JSON_UNESCAPED_UNICODE);
+    exit();
+});
+
 // Header di sicurezza e tipo risposta
 header('Content-Type: application/json; charset=UTF-8');
 header('X-Content-Type-Options: nosniff');
