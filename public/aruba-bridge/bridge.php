@@ -1,36 +1,39 @@
 <?php
 /**
  * =============================================================================
- * ARUBA BUSINESS PHP MYSQL BRIDGE
+ * ARUBA BUSINESS PHP MYSQL BRIDGE (Vercel Frontend & Aruba MySQL Compatible)
  * =============================================================================
  * Endpoint bridge RESTful sicuro per connettere l'applicazione "Il Mondo Tam Tam"
- * al database MySQL ospitato su hosting Aruba Business.
+ * (ospitata su Vercel o cloud) al database MySQL ospitato su hosting Aruba Business.
  *
- * Caratteristiche di Sicurezza (OWASP Top 10):
- * - PDO con Prepared Statements parametrizzati su tutte le query (No SQL Injection)
- * - Autenticazione con Bearer Token / X-Bridge-Key contro accessi non autorizzati
- * - Gestione avanzata password con bcrypt (password_hash / password_verify nativo)
- * - Rate Limiting per prevenzione attacchi Brute-Force
- * - Nessuna esposizione di hash password nei payload di risposta
- * - Supporto transazioni ACID per operazioni critiche (likes, registrazioni)
- * - Compatibilità UTF-8 mb4 completa per testo, emoji e caratteri speciali
+ * Caratteristiche di Sicurezza e Compatibilità:
+ * - CORS dinamico per Vercel (* e domini personalizzati con credenziali)
+ * - Gestione errori globale con output JSON garantito (no pagine HTML 500)
+ * - PDO con Prepared Statements parametrizzati (No SQL Injection)
+ * - Autenticazione con Bearer Token / X-Bridge-Key
+ * - Gestione password con bcrypt nativo PHP
  * =============================================================================
  */
 
 define('TAM_TAM_BRIDGE_LOADED', true);
 
-// Header CORS e tipo risposta
+// Header di sicurezza e tipo risposta
 header('Content-Type: application/json; charset=UTF-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('X-XSS-Protection: 1; mode=block');
 
-// Gestione CORS
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
-header("Access-Control-Allow-Origin: $origin");
-header('Access-Control-Allow-Credentials: true');
+// Gestione CORS avanzata per compatibilità Vercel
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (!empty($origin)) {
+    header("Access-Control-Allow-Origin: $origin");
+    header('Access-Control-Allow-Credentials: true');
+} else {
+    header("Access-Control-Allow-Origin: *");
+}
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Bridge-Key, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Bridge-Key, X-Requested-With, X-CSRF-Token');
+header('Access-Control-Max-Age: 86400');
 
 // Risposta immediata a preflight OPTIONS
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -38,19 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Global Exception & Error Handler per garantire output JSON ed evitare HTML/500
-set_exception_handler(function($exception) {
-    http_response_code(500);
-    header('Content-Type: application/json; charset=UTF-8');
+// Funzione helper per risposte JSON standardizzate
+function sendResponse($data = null, int $statusCode = 200, ?string $error = null) {
+    http_response_code($statusCode);
     echo json_encode([
-        'success'   => false,
-        'data'      => null,
-        'error'     => 'Bridge Exception: ' . $exception->getMessage(),
-        'file'      => basename($exception->getFile()),
-        'line'      => $exception->getLine(),
+        'success'   => $statusCode >= 200 && $statusCode < 300,
+        'data'      => $data,
+        'error'     => $error,
         'timestamp' => date('c')
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit();
+}
+
+// Gestione errori globale: garantisce risposte JSON anche in caso di errori PHP critici
+set_exception_handler(function($e) {
+    sendResponse(null, 500, 'Eccezione PHP: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
 });
 
 set_error_handler(function($severity, $message, $file, $line) {
@@ -58,6 +63,19 @@ set_error_handler(function($severity, $message, $file, $line) {
         return;
     }
     throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        http_response_code(500);
+        echo json_encode([
+            'success'   => false,
+            'data'      => null,
+            'error'     => 'Errore Fatale PHP su Aruba: ' . $error['message'] . ' in ' . $error['file'] . ':' . $error['line'],
+            'timestamp' => date('c')
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
 });
 
 // Caricamento configurazione
@@ -812,37 +830,6 @@ try {
                 ORDER BY a.`created_at` DESC
             ");
             $articles = $stmt->fetchAll();
-
-            if (empty($articles)) {
-                // Inserisce automaticamente un articolo di benvenuto se la tabella è vuota
-                $defaultId = 'default-welcome-article';
-                $defaultTitle = 'Benvenuti su Il Mondo Tam Tam (MySQL Aruba)';
-                $defaultSummary = 'La piattaforma è correttamente connessa al database MySQL su Aruba Business.';
-                $defaultContent = 'Siamo online! Questo è il primo post di benvenuto inserito automaticamente nel database MySQL di Aruba Business per iniziare subito a condividere opinioni e notizie.';
-                $defaultAuthorName = 'Redazione Tam Tam';
-                $defaultCategory = 'Opinioni';
-                $defaultImage = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1000';
-
-                try {
-                    $ins = $pdo->prepare("
-                        INSERT IGNORE INTO `articles` 
-                        (`id`, `title`, `summary`, `content`, `author_name`, `category`, `image_url`, `likes`, `created_at`)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())
-                    ");
-                    $ins->execute([$defaultId, $defaultTitle, $defaultSummary, $defaultContent, $defaultAuthorName, $defaultCategory, $defaultImage]);
-
-                    // Rileva nuovamente gli articoli
-                    $stmt = $pdo->query("
-                        SELECT a.`id`, a.`title`, a.`summary`, a.`content`, a.`author_id`, a.`author_name`,
-                               a.`category`, a.`image_url`, a.`likes`, a.`created_at`, a.`updated_at`
-                        FROM `articles` a
-                        ORDER BY a.`created_at` DESC
-                    ");
-                    $articles = $stmt->fetchAll();
-                } catch (Exception $e) {
-                    // Ignora errori di seeding e procede
-                }
-            }
 
             if (empty($articles)) {
                 sendResponse([]);
