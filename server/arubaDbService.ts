@@ -130,7 +130,7 @@ async function callArubaBridge(action: string, method: 'GET' | 'POST' = 'POST', 
 
       return json.data;
     } catch (err: any) {
-      console.error(`[Aruba Bridge] ERRORE chiamata remota a ${action} su URL "${bridgeUrl}": ${err.message}. Utilizzo fallback locale.`);
+      console.warn(`[Aruba Bridge] Chiamata remota a ${action} fallita (${err.message}). Utilizzo fallback locale.`);
     }
   }
 
