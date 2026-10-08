@@ -178,13 +178,16 @@ try {
             }
             
             $serverVersion = $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
+            $bridgeAuthorized = !empty($providedKey) && hash_equals($expectedKey, $providedKey);
             sendResponse([
-                'status'        => 'connected',
-                'hosting'       => 'Aruba Business MySQL',
-                'mysql_version' => $serverVersion,
-                'tables'        => $tablesCheck,
-                'authorized'    => !empty($providedKey) && hash_equals($expectedKey, $providedKey),
-                'php_version'   => PHP_VERSION
+                'status'            => 'connected',
+                'hosting'           => 'Aruba Business MySQL',
+                'mysql_version'     => $serverVersion,
+                'tables'            => $tablesCheck,
+                'authorized'        => $bridgeAuthorized,
+                'db_connected'      => true,
+                'bridge_authorized' => $bridgeAuthorized,
+                'php_version'       => PHP_VERSION
             ]);
             break;
 
