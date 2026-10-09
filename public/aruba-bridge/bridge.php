@@ -1,82 +1,42 @@
 <?php
 /**
  * =============================================================================
- * ARUBA BUSINESS PHP MYSQL BRIDGE (Vercel Frontend & Aruba MySQL Compatible)
+ * ARUBA BUSINESS PHP MYSQL BRIDGE
  * =============================================================================
  * Endpoint bridge RESTful sicuro per connettere l'applicazione "Il Mondo Tam Tam"
- * (ospitata su Vercel o cloud) al database MySQL ospitato su hosting Aruba Business.
+ * al database MySQL ospitato su hosting Aruba Business.
  *
- * Caratteristiche di Sicurezza e Compatibilità:
- * - CORS dinamico per Vercel (* e domini personalizzati con credenziali)
- * - Gestione errori globale con output JSON garantito (no pagine HTML 500)
- * - PDO con Prepared Statements parametrizzati (No SQL Injection)
- * - Autenticazione con Bearer Token / X-Bridge-Key
- * - Gestione password con bcrypt nativo PHP
+ * Caratteristiche di Sicurezza (OWASP Top 10):
+ * - PDO con Prepared Statements parametrizzati su tutte le query (No SQL Injection)
+ * - Autenticazione con Bearer Token / X-Bridge-Key contro accessi non autorizzati
+ * - Gestione avanzata password con bcrypt (password_hash / password_verify nativo)
+ * - Rate Limiting per prevenzione attacchi Brute-Force
+ * - Nessuna esposizione di hash password nei payload di risposta
+ * - Supporto transazioni ACID per operazioni critiche (likes, registrazioni)
+ * - Compatibilità UTF-8 mb4 completa per testo, emoji e caratteri speciali
  * =============================================================================
  */
 
 define('TAM_TAM_BRIDGE_LOADED', true);
 
-// Header di sicurezza e tipo risposta
+// Header CORS e tipo risposta
 header('Content-Type: application/json; charset=UTF-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('X-XSS-Protection: 1; mode=block');
 
-// Gestione CORS avanzata per compatibilità Vercel
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (!empty($origin)) {
-    header("Access-Control-Allow-Origin: $origin");
-    header('Access-Control-Allow-Credentials: true');
-} else {
-    header("Access-Control-Allow-Origin: *");
-}
+// Gestione CORS
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+header("Access-Control-Allow-Origin: $origin");
+header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Bridge-Key, X-Requested-With, X-CSRF-Token');
-header('Access-Control-Max-Age: 86400');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Bridge-Key, X-Requested-With');
 
 // Risposta immediata a preflight OPTIONS
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
-
-// Funzione helper per risposte JSON standardizzate
-function sendResponse($data = null, int $statusCode = 200, ?string $error = null) {
-    http_response_code($statusCode);
-    echo json_encode([
-        'success'   => $statusCode >= 200 && $statusCode < 300,
-        'data'      => $data,
-        'error'     => $error,
-        'timestamp' => date('c')
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit();
-}
-
-// Gestione errori globale: garantisce risposte JSON anche in caso di errori PHP critici
-set_exception_handler(function($e) {
-    sendResponse(null, 500, 'Eccezione PHP: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
-});
-
-set_error_handler(function($severity, $message, $file, $line) {
-    if (!(error_reporting() & $severity)) {
-        return;
-    }
-    throw new ErrorException($message, 0, $severity, $file, $line);
-});
-
-register_shutdown_function(function() {
-    $error = error_get_last();
-    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        http_response_code(500);
-        echo json_encode([
-            'success'   => false,
-            'data'      => null,
-            'error'     => 'Errore Fatale PHP su Aruba: ' . $error['message'] . ' in ' . $error['file'] . ':' . $error['line'],
-            'timestamp' => date('c')
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-});
 
 // Caricamento configurazione
 $configFile = __DIR__ . '/config.php';
